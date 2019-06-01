@@ -248,6 +248,51 @@ using namespace sf;
 Player yourenotallowedtousethisplayerinstanceexceptinmainwhichiswhyimadethenamesoinconvenientlylong; //Needs to be global for some reason, doesn't initialise properly otherwise
 																									 //This and the main function should be the only places "globplayer" are used. Don't treat this as global, pass a Player& to functions instead.
 
+
+bool playIntro(sf::RenderWindow& window) {
+#ifdef _DEBUG
+	return true; //Don't play intro if debugging
+#endif
+
+	using namespace sf;
+
+
+	
+
+
+	int timer = 0;
+
+	window.setFramerateLimit(60);
+	while (timer < 60 * 10) {
+		timer++;
+
+
+		Event event;
+		while (window.pollEvent(event)) {
+			if (event.type == Event::Closed) {
+				window.close();
+				return false;
+			}
+		}
+
+
+
+		window.clear(Color::Black);
+
+		Text poweredBy("powered by", consolas);
+
+		window.draw(poweredBy);
+		window.display();
+	}
+	return true;
+
+	window.setFramerateLimit(0);
+}
+
+
+
+
+
 const bool needsExternalRuntime = false;
 int main(int argc, char* argv[])
 {
@@ -329,9 +374,12 @@ int main(int argc, char* argv[])
 	settings.attributeFlags = ContextSettings::Core;
 	RenderWindow window(VideoMode(windowRes.x, windowRes.y), "HedgehogCreator Runtime", Style::Close, settings);
 
+
+
 	window.setKeyRepeatEnabled(false); //Disable repeated keypresses
-	BOOL is64Bit = false;
-	IsWow64Process(window.getSystemHandle(), &is64Bit);
+
+
+
 
 	window.clear(Color::Black);
 	Text initText;
@@ -343,6 +391,8 @@ int main(int argc, char* argv[])
 	initText.setPosition(Vector2f(windowRes) / 2.f - Vector2f(initText.getGlobalBounds().width, initText.getGlobalBounds().height) / 2.f);
 	window.draw(initText);
 	window.display();
+
+	currentRoom.name = "New Room";
 
 	for (unsigned int i = 1; i < args.size(); i++) {
 		std::string arg = args[i];
@@ -369,6 +419,8 @@ int main(int argc, char* argv[])
 		}
 	}
 
+	//if (!playIntro(window)) 
+	//	return false;
 	
 	fs::path dir("startupdata.ini");
 	if (fs::exists(dir)) {
@@ -397,9 +449,6 @@ int main(int argc, char* argv[])
 		std::cout << "startupdata.ini not found, loading default room..\n";
 
 		
-		//currentProject.name = "New Project";
-		//currentProject.path = GetOwnFilePath() + "/Projects/" + currentProject.name + "/";
-
 
 
 		currentRoom.AddTileMap("CPZ.png");
@@ -408,10 +457,6 @@ int main(int argc, char* argv[])
 		currentRoom.AddTileMap("testmap.png");
 
 
-
-		//currentRoom = &currentProject.GetRoomsPtr()->at(0);
-	
-		//window.setFramerateLimit(60);
 
 	
 
@@ -680,16 +725,22 @@ void FixedUpdate(GlobalGameState & gamestate, Player & player, sf::Time dt) {
 
 
 
-		if (abs(player.state.groundSpeed) < 0.5f && player.state.rolling) {
+		if (abs(player.state.groundSpeed) < 0.5f && player.state.rolling && player.state.groundMode == 0 && !player.state.airborne) {
 			player.state.rolling = false;
 			player.state.crouched = true;
 		}
 
 
+		//Bugfix where player would crouch in air/when sliding fast sometimes
+		if (abs(player.state.groundSpeed) >= 0.5f && !player.state.rolling && player.state.crouched) {
+			player.state.crouched = false;
+			player.state.rolling = true;
+		}
+
 		if (!Keyboard::isKeyPressed(Keyboard::S) && player.state.spindashing) {
 			player.state.spindashing = false;
 			player.state.rolling = true;
-			player.state.groundSpeed = (8 + (floor(player.state.spindashWindup) / 2)) * (int)player.state.lastDirection;
+			player.state.groundSpeed = (8 + (floor(player.state.spindashWindup) / 2.f)) * (int)player.state.lastDirection;
 			player.state.spindashWindup = 0;
 		}
 
@@ -999,14 +1050,15 @@ void FixedUpdate(GlobalGameState & gamestate, Player & player, sf::Time dt) {
 
 		if (hasCollided && player.state.airborne) {
 
-			if (!player.state.dropdashing) {
-				player.state.rolling = false;
-				player.state.groundSpeed = CalculateGSPD(player.state.angle, player.state);
-			}
-			else {
-				player.state.groundSpeed = std::max(std::min((std::abs(player.state.groundSpeed)), 16.), 4.) * player.state.lastDirection;
+			
+			if (player.state.dropdashing) {
+				//player.state.groundSpeed = std::max(std::min((std::abs(player.state.groundSpeed)), 16.), 4.) * player.state.lastDirection;
+				player.state.groundSpeed = std::abs(player.state.speed.y) * player.state.lastDirection;
 				player.state.rolling = true;
 				player.state.dropdashing = false;
+			} else {
+				player.state.rolling = false;
+				player.state.groundSpeed = CalculateGSPD(player.state.angle, player.state);
 			}
 		}
 
@@ -1166,327 +1218,372 @@ bool AddToDrawBuffer(const WorldTile & tile, std::unordered_map<std::string, sf:
 		drawBuffers[texturename].append(drawn[i]);
 	return true;
 }
-void Draw(RenderWindow& window, Player& player) {
-		gameWindow.pushGLStates();
+
+
+
+
+
+
+
+
+void UpdateGameUI(sf::RenderTarget& target) {
+	using namespace sf;
+	static long long int timer;
+	static Text txt = Text(currentRoom.name, consolas, 20);
+	static Vector2f levelNamePos = { 0.f, (float)(target.getSize().y / 2.f) };
+	static float levelNameHVel;
 	
-		if (player.state.groundMode == GROUNDMODE_FLOOR)
-			player.sprite.sheetS.setPosition(player.state.position + Vector2f(0, 1));
-		else if (player.state.groundMode == GROUNDMODE_RIGHTWALL)
-			player.sprite.sheetS.setPosition(player.state.position + Vector2f(0, 0));
-		else if (player.state.groundMode == GROUNDMODE_CEILING)
-			player.sprite.sheetS.setPosition(player.state.position + Vector2f(0, -1));
-		else
-			player.sprite.sheetS.setPosition(player.state.position + Vector2f(-1, 0));
-		//player.sprite.sheetS.setOrigin(0.0f, 0.0f);
+	
+	if (timer == 0) {
+		levelNameHVel = 10.f;
+	}
 
-		//Reset animation frame to 0 if animation changed
-		if (player.sprite.prevYIndex != player.sprite.yIndex) {
-			player.sprite.prevYIndex = player.sprite.yIndex;
+	if (levelNameHVel > 0)
+		levelNameHVel-= 0.25f;
+
+
+	levelNamePos.x += levelNameHVel;
+
+	
+	txt.setPosition(0,0);
+
+	if (timer < ULLONG_MAX)
+		timer++;
+
+	target.draw(txt);
+}
+
+
+
+
+
+void Draw(RenderWindow& window, Player& player) {
+	gameWindow.pushGLStates();
+	
+	if (player.state.groundMode == GROUNDMODE_FLOOR)
+		player.sprite.sheetS.setPosition(player.state.position + Vector2f(0, 1));
+	else if (player.state.groundMode == GROUNDMODE_RIGHTWALL)
+		player.sprite.sheetS.setPosition(player.state.position + Vector2f(0, 0));
+	else if (player.state.groundMode == GROUNDMODE_CEILING)
+		player.sprite.sheetS.setPosition(player.state.position + Vector2f(0, -1));
+	else
+		player.sprite.sheetS.setPosition(player.state.position + Vector2f(-1, 0));
+	//player.sprite.sheetS.setOrigin(0.0f, 0.0f);
+
+	//Reset animation frame to 0 if animation changed
+	if (player.sprite.prevYIndex != player.sprite.yIndex) {
+		player.sprite.prevYIndex = player.sprite.yIndex;
+		player.sprite.xIndex = 0;
+	}
+
+
+
+	player.state.groundMode = std::fmod(round(player.state.angle / 90), 4);
+	//if (airborne) groundMode = 0;
+
+	if ((player.state.pushState > 1 && player.state.speed.x < 0) || player.state.pushState < 1 && player.state.speed.x > 0) player.state.pushState = Direction::None; //Small check after scripts update to fix a visual bug
+
+	if (isnan(player.sprite.animationtimer) || isinf(player.sprite.animationtimer))
+		player.sprite.animationtimer = 0;
+
+	if (player.sprite.animationtimer < 0)
+		player.sprite.animationtimer = 0;
+	//Animation
+	if (player.sprite.animationtimer >= 1) {
+
+		player.sprite.xIndex++;
+		player.sprite.animationtimer = 0;
+	}
+	if (player.state.jumping || player.state.rolling) {
+		if (player.sprite.xIndex > 4)
 			player.sprite.xIndex = 0;
-		}
+		player.sprite.UpdateRect(player.sprite.xIndex, 2);
+		player.sprite.frameduration = std::max(5. - std::abs(player.state.groundSpeed), 1.);
 
+	}
+	else if (player.state.crouched) {
+		if (player.state.spindashing) {
+			if (player.sprite.xIndex > 5) 
+				player.sprite.xIndex = 1;
+			player.sprite.UpdateRect(player.sprite.xIndex, 4);
+			player.sprite.frameduration = 1;
 
-
-		player.state.groundMode = std::fmod(round(player.state.angle / 90), 4);
-		//if (airborne) groundMode = 0;
-
-		if ((player.state.pushState > 1 && player.state.speed.x < 0) || player.state.pushState < 1 && player.state.speed.x > 0) player.state.pushState = Direction::None; //Small check after scripts update to fix a visual bug
-
-		if (isnan(player.sprite.animationtimer) || isinf(player.sprite.animationtimer))
-			player.sprite.animationtimer = 0;
-
-		if (player.sprite.animationtimer < 0)
-			player.sprite.animationtimer = 0;
-		//Animation
-		if (player.sprite.animationtimer >= 1) {
-
-			player.sprite.xIndex++;
-			player.sprite.animationtimer = 0;
-		}
-		if (player.state.jumping || player.state.rolling) {
-			if (player.sprite.xIndex > 4)
-				player.sprite.xIndex = 0;
-			player.sprite.UpdateRect(player.sprite.xIndex, 2);
-			player.sprite.frameduration = std::max(5. - std::abs(player.state.groundSpeed), 1.);
-
-		}
-		else if (player.state.crouched) {
-			if (player.state.spindashing) {
-				if (player.sprite.xIndex > 5) 
-					player.sprite.xIndex = 1;
-				player.sprite.UpdateRect(player.sprite.xIndex, 4);
-				player.sprite.frameduration = 1;
-
-			}
-			else {
-				if (player.sprite.xIndex > 1)
-					player.sprite.xIndex = 1;
-				player.sprite.UpdateRect(player.sprite.xIndex, 3);
-				player.sprite.frameduration = 1;
-				
-			}
 		}
 		else {
-			if (player.state.groundSpeed != 0 && player.state.pushState == 0) {
-				if (std::abs(player.state.groundSpeed) < 5) {
-					if (player.sprite.xIndex > 7)
-						player.sprite.xIndex = 0;
-					player.sprite.UpdateRect(player.sprite.xIndex, 1);
-					player.sprite.frameduration = std::max(8 - abs(player.state.groundSpeed), 1.0);
-				}
-				else {
-					if (player.sprite.xIndex > 3)
-						player.sprite.xIndex = 0;
-					player.sprite.UpdateRect(player.sprite.xIndex, 5);
-					player.sprite.frameduration = std::max(8 - abs(player.state.groundSpeed), 1.0);
-				}
+			if (player.sprite.xIndex > 1)
+				player.sprite.xIndex = 1;
+			player.sprite.UpdateRect(player.sprite.xIndex, 3);
+			player.sprite.frameduration = 1;
+				
+		}
+	}
+	else {
+		if (player.state.groundSpeed != 0 && player.state.pushState == 0) {
+			if (std::abs(player.state.groundSpeed) < 5) {
+				if (player.sprite.xIndex > 7)
+					player.sprite.xIndex = 0;
+				player.sprite.UpdateRect(player.sprite.xIndex, 1);
+				player.sprite.frameduration = std::max(8 - abs(player.state.groundSpeed), 1.0);
 			}
-			else if (player.state.groundSpeed == 0 && (!(Keyboard::isKeyPressed(Keyboard::A) || Keyboard::isKeyPressed(Keyboard::D)) || player.state.airborne)) {
-				player.sprite.xIndex = 0;
-				player.sprite.UpdateRect(player.sprite.xIndex, 0);
-			}
-			else if (player.state.pushState != 0) {
-				player.sprite.frameduration = 32;
+			else {
 				if (player.sprite.xIndex > 3)
 					player.sprite.xIndex = 0;
-				player.sprite.UpdateRect(player.sprite.xIndex, 6);
+				player.sprite.UpdateRect(player.sprite.xIndex, 5);
+				player.sprite.frameduration = std::max(8 - abs(player.state.groundSpeed), 1.0);
 			}
 		}
-		player.sprite.sheetS.setTexture(player.sprite.sheetT);
-		player.sprite.sheetS.setOrigin(player.sprite.origin);
-		IntRect rect = player.sprite.GetRect();
-		player.sprite.sheetS.setTextureRect(rect);
+		else if (player.state.groundSpeed == 0 && (!(Keyboard::isKeyPressed(Keyboard::A) || Keyboard::isKeyPressed(Keyboard::D)) || player.state.airborne)) {
+			player.sprite.xIndex = 0;
+			player.sprite.UpdateRect(player.sprite.xIndex, 0);
+		}
+		else if (player.state.pushState != 0) {
+			player.sprite.frameduration = 32;
+			if (player.sprite.xIndex > 3)
+				player.sprite.xIndex = 0;
+			player.sprite.UpdateRect(player.sprite.xIndex, 6);
+		}
+	}
+	player.sprite.sheetS.setTexture(player.sprite.sheetT);
+	player.sprite.sheetS.setOrigin(player.sprite.origin);
+	IntRect rect = player.sprite.GetRect();
+	player.sprite.sheetS.setTextureRect(rect);
 
-		debugdrawcalls = 0;
-
-
-		//sonicLastAngle = player.state.angle;
-
-
-		camera.position.x = std::max(camera.position.x, gameWindow.getSize().x / 2.f * camera.zoomFactor);
-		camera.position.y = std::max(camera.position.y, gameWindow.getSize().y / 2.f * camera.zoomFactor);
-		camera.position.x = std::min(camera.position.x, currentRoom.chunks[0].size() * 256 - gameWindow.getSize().x / 2.f * camera.zoomFactor);
-		camera.position.y = std::min(camera.position.y, currentRoom.chunks[0][0].size() * 256 - gameWindow.getSize().y / 2.f * camera.zoomFactor);
-		//Prevent .5 in camera X and Y, which causes rounding errors in sprite sheets.
-		if (camera.position.x - std::floor(camera.position.x) == 0.5)
-			camera.position.x -= 0.05f;
-		if (camera.position.y - std::floor(camera.position.y) == 0.5)
-			camera.position.y -= 0.05f;
-
-		sf::View view(camera.position + camera.offset, Vector2f(gameWindow.getSize()));
-		gameWindow.setView(view);
-		gameWindow.display();
-
-		using namespace sf;
-		Vector2i upLeftScrTile = (Vector2i(camera.position) - (Vector2i(Vector2f(gameWindow.getSize()) * camera.zoomFactor) / 2)) / 16; //Upper left tile on screen
-		Vector2i downRightScrTile = (Vector2i(camera.position) + (Vector2i(Vector2f(gameWindow.getSize()) * camera.zoomFactor) / 2)) / 16 + Vector2i(1, 1); //Lower right tile on screen
-		upLeftScrTile.x = std::max((int)upLeftScrTile.x, 0);
-		upLeftScrTile.y = std::max((int)upLeftScrTile.y, 0);
-		downRightScrTile.x = std::min((int)downRightScrTile.x, 16 * 64);
-		downRightScrTile.y = std::min((int)downRightScrTile.y, 16 * 8);
-		//gameWindow.clear(Color::Black);
-		player.sprite.fillColor.r = 255;
-		player.sprite.fillColor.g = 255;
-		player.sprite.fillColor.b = 255;
-		player.sprite.fillColor.a = 255;
-		player.sprite.sheetS.setColor(player.sprite.fillColor);
+	debugdrawcalls = 0;
 
 
+	//sonicLastAngle = player.state.angle;
 
-		if (currentRoom.parallaxLayers.size() > 0) {
-			for (unsigned int i = 0; i < currentRoom.parallaxLayers.size(); i++) {
-				ParallaxLayer& currentPL = currentRoom.parallaxLayers[i];
 
-				currentPL.position = currentPL.origin + (camera.position - Vector2f(gameWindow.getSize()) / 2.f) * Vector2f(currentPL.scrollMultiplier.x, currentPL.scrollMultiplier.y);
+	camera.position.x = std::max(camera.position.x, gameWindow.getSize().x / 2.f * camera.zoomFactor);
+	camera.position.y = std::max(camera.position.y, gameWindow.getSize().y / 2.f * camera.zoomFactor);
+	camera.position.x = std::min(camera.position.x, currentRoom.chunks[0].size() * 256 - gameWindow.getSize().x / 2.f * camera.zoomFactor);
+	camera.position.y = std::min(camera.position.y, currentRoom.chunks[0][0].size() * 256 - gameWindow.getSize().y / 2.f * camera.zoomFactor);
+	//Prevent .5 in camera X and Y, which causes rounding errors in sprite sheets.
+	if (camera.position.x - std::floor(camera.position.x) == 0.5)
+		camera.position.x -= 0.05f;
+	if (camera.position.y - std::floor(camera.position.y) == 0.5)
+		camera.position.y -= 0.05f;
+
+	sf::View view(camera.position + camera.offset, Vector2f(gameWindow.getSize()));
+	gameWindow.setView(view);
+
+
+	using namespace sf;
+	Vector2i upLeftScrTile = (Vector2i(camera.position) - (Vector2i(Vector2f(gameWindow.getSize()) * camera.zoomFactor) / 2)) / 16; //Upper left tile on screen
+	Vector2i downRightScrTile = (Vector2i(camera.position) + (Vector2i(Vector2f(gameWindow.getSize()) * camera.zoomFactor) / 2)) / 16 + Vector2i(1, 1); //Lower right tile on screen
+	upLeftScrTile.x = std::max((int)upLeftScrTile.x, 0);
+	upLeftScrTile.y = std::max((int)upLeftScrTile.y, 0);
+	downRightScrTile.x = std::min((int)downRightScrTile.x, 16 * 64);
+	downRightScrTile.y = std::min((int)downRightScrTile.y, 16 * 8);
+	//gameWindow.clear(Color::Black);
+	player.sprite.fillColor.r = 255;
+	player.sprite.fillColor.g = 255;
+	player.sprite.fillColor.b = 255;
+	player.sprite.fillColor.a = 255;
+	player.sprite.sheetS.setColor(player.sprite.fillColor);
+
+
+
+	if (currentRoom.parallaxLayers.size() > 0) {
+		for (unsigned int i = 0; i < currentRoom.parallaxLayers.size(); i++) {
+			ParallaxLayer& currentPL = currentRoom.parallaxLayers[i];
+
+			currentPL.position = currentPL.origin + (camera.position - Vector2f(gameWindow.getSize()) / 2.f) * Vector2f(currentPL.scrollMultiplier.x, currentPL.scrollMultiplier.y);
 				
-				currentPL.origin += currentPL.constScrollRate;
-				currentPL.origin.x = std::fmod(currentPL.origin.x, (float)currentPL.image->getSize().x);
-				//currentPL.origin.y = std::fmod(currentPL.origin.y, (float)currentPL.image->getSize().y);
+			currentPL.origin += currentPL.constScrollRate;
+			currentPL.origin.x = std::fmod(currentPL.origin.x, (float)currentPL.image->getSize().x);
+			//currentPL.origin.y = std::fmod(currentPL.origin.y, (float)currentPL.image->getSize().y);
 
-				sf::Vector2i currentRequiredIndex(
-					(
-					(camera.position - sf::Vector2f(gameWindowSize / 2))
-						- currentPL.position
-						)
-					/ sf::Vector2f(currentPL.image->getSize()));
+			sf::Vector2i currentRequiredIndex(
+				(
+				(camera.position - sf::Vector2f(gameWindowSize / 2))
+					- currentPL.position
+					)
+				/ sf::Vector2f(currentPL.image->getSize()));
 
 
-				sf::VertexArray quad(sf::Quads, 4);
-				if ((currentPL.hLoop || currentPL.yLoop)) {
+			sf::VertexArray quad(sf::Quads, 4);
+			if ((currentPL.hLoop || currentPL.yLoop)) {
 
-					//int maxDrawIndex = currentRequiredIndex.x
-					//	+ camera.position.x / currentPL.image->getSize().x * std::ceilf((float)gameWindowSize.x / (float)currentPL.image->getSize().x);
-						//+ std::ceilf((float)gameWindowSize.x / (float)currentPL.image->getSize().x);
-					int maxDrawIndex = currentRequiredIndex.x;
-					maxDrawIndex += std::ceilf((float)gameWindowSize.x / (float)currentPL.image->getSize().x) + 1;
-					for (int i = currentRequiredIndex.x; i < maxDrawIndex; i++) {
-						sf::Vector2f position(currentPL.position.x + (currentPL.image->getSize().x * i), currentPL.position.y);
-						quad[0].position = position;
-						quad[1].position = position + sf::Vector2f(currentPL.image->getSize().x, 0);
-						quad[2].position = position + sf::Vector2f(currentPL.image->getSize().x, currentPL.image->getSize().y);
-						quad[3].position = position + sf::Vector2f(0, currentPL.image->getSize().y);
-						quad[0].texCoords = { 0, 0 };
-						quad[1].texCoords = { (float)currentPL.image->getSize().x, 0 };
-						quad[2].texCoords = { (float)currentPL.image->getSize().x, (float)currentPL.image->getSize().y };
-						quad[3].texCoords = { 0, (float)currentPL.image->getSize().y };
-						gameWindow.draw(quad, currentPL.image);
-					}
-				}
-				else {
-					
-					quad[0].position = currentPL.position;
-					quad[1].position = currentPL.position + sf::Vector2f(currentPL.image->getSize().x, 0);
-					quad[2].position = currentPL.position + sf::Vector2f(currentPL.image->getSize().x, currentPL.image->getSize().y);
-					quad[3].position = currentPL.position + sf::Vector2f(0, currentPL.image->getSize().y);
-					
-					
+				//int maxDrawIndex = currentRequiredIndex.x
+				//	+ camera.position.x / currentPL.image->getSize().x * std::ceilf((float)gameWindowSize.x / (float)currentPL.image->getSize().x);
+					//+ std::ceilf((float)gameWindowSize.x / (float)currentPL.image->getSize().x);
+				int maxDrawIndex = currentRequiredIndex.x;
+				maxDrawIndex += std::ceilf((float)gameWindowSize.x / (float)currentPL.image->getSize().x) + 1;
+				for (int i = currentRequiredIndex.x; i < maxDrawIndex; i++) {
+					sf::Vector2f position(currentPL.position.x + (currentPL.image->getSize().x * i), currentPL.position.y);
+					quad[0].position = position;
+					quad[1].position = position + sf::Vector2f(currentPL.image->getSize().x, 0);
+					quad[2].position = position + sf::Vector2f(currentPL.image->getSize().x, currentPL.image->getSize().y);
+					quad[3].position = position + sf::Vector2f(0, currentPL.image->getSize().y);
 					quad[0].texCoords = { 0, 0 };
 					quad[1].texCoords = { (float)currentPL.image->getSize().x, 0 };
 					quad[2].texCoords = { (float)currentPL.image->getSize().x, (float)currentPL.image->getSize().y };
 					quad[3].texCoords = { 0, (float)currentPL.image->getSize().y };
+					gameWindow.draw(quad, currentPL.image);
 				}
-				gameWindow.draw(quad, currentPL.image);
 			}
-		}
-
-
-		gameWindow.display();
-		view = View(camera.position + camera.offset, Vector2f(gameWindow.getSize()) * camera.zoomFactor);
-		gameWindow.setView(view);
-
-
-		RectangleShape drawrect(Vector2f(17, 17));
-		drawrect.setOutlineColor(Color(255, 255, 255, 25));
-		drawrect.setFillColor(Color::Transparent);
-		drawrect.setOutlineThickness(-1 * std::max(camera.zoomFactor, 1.f));
-
-
-		sf::Sprite refspr(referenceimage);
-		refspr.setColor(Color(255, 255, 255, 125));
-		gameWindow.draw(refspr);
-
-		std::unordered_map<std::string, sf::VertexArray> drawBuffers;
-
-		for (int l = 0; l < player.state.layer; l++) { //Layer
-			for (int x = upLeftScrTile.x; x < downRightScrTile.x; x++) {
-				for (int y = upLeftScrTile.y; y < downRightScrTile.y; y++) {
-					Vector2i currentChunk = { x / 16, y / 16 };
-					if (emptychunks[x][y] == CHUNK_EMPTY) {
-						std::cout << "Skipped chunk.";
-						y += 16;
-					}
-
-					WorldTile* currentTile = GetTileAtGlobalIndex(Vector2i(x, y), l, &currentRoom);
+			else {
 					
-					bool nonempty = AddToDrawBuffer(*currentTile, drawBuffers, gameWindow);
-					if (emptychunks[x][y] == CHUNK_UNKNOWN && nonempty)
-						emptychunks[x][y] = CHUNK_NONEMPTY;
-					if (debugInfoLevel >= DebugInfoLevels::MAX)
-						debugdrawcalls++;
+				quad[0].position = currentPL.position;
+				quad[1].position = currentPL.position + sf::Vector2f(currentPL.image->getSize().x, 0);
+				quad[2].position = currentPL.position + sf::Vector2f(currentPL.image->getSize().x, currentPL.image->getSize().y);
+				quad[3].position = currentPL.position + sf::Vector2f(0, currentPL.image->getSize().y);
+					
+					
+				quad[0].texCoords = { 0, 0 };
+				quad[1].texCoords = { (float)currentPL.image->getSize().x, 0 };
+				quad[2].texCoords = { (float)currentPL.image->getSize().x, (float)currentPL.image->getSize().y };
+				quad[3].texCoords = { 0, (float)currentPL.image->getSize().y };
+			}
+			gameWindow.draw(quad, currentPL.image);
+		}
+	}
+
+
+
+	view = View(camera.position + camera.offset, Vector2f(gameWindow.getSize()) * camera.zoomFactor);
+	gameWindow.setView(view);
+
+
+	RectangleShape drawrect(Vector2f(17, 17));
+	drawrect.setOutlineColor(Color(255, 255, 255, 25));
+	drawrect.setFillColor(Color::Transparent);
+	drawrect.setOutlineThickness(-1 * std::max(camera.zoomFactor, 1.f));
+
+
+	sf::Sprite refspr(referenceimage);
+	refspr.setColor(Color(255, 255, 255, 125));
+	gameWindow.draw(refspr);
+
+	std::unordered_map<std::string, sf::VertexArray> drawBuffers;
+
+	for (int l = 0; l < player.state.layer; l++) { //Layer
+		for (int x = upLeftScrTile.x; x < downRightScrTile.x; x++) {
+			for (int y = upLeftScrTile.y; y < downRightScrTile.y; y++) {
+				Vector2i currentChunk = { x / 16, y / 16 };
+				if (emptychunks[x][y] == CHUNK_EMPTY) {
+					std::cout << "Skipped chunk.";
+					y += 16;
 				}
+
+				WorldTile* currentTile = GetTileAtGlobalIndex(Vector2i(x, y), l, &currentRoom);
+					
+				bool nonempty = AddToDrawBuffer(*currentTile, drawBuffers, gameWindow);
+				if (emptychunks[x][y] == CHUNK_UNKNOWN && nonempty)
+					emptychunks[x][y] = CHUNK_NONEMPTY;
+				if (debugInfoLevel >= DebugInfoLevels::MAX)
+					debugdrawcalls++;
 			}
 		}
+	}
 
 
-		for (auto& b : drawBuffers) {
-			gameWindow.draw(b.second, &currentRoom.textures[b.first]);
-		}
-		for (unsigned int l = 0; l < currentRoom.objects.size(); l++) {
-			for (unsigned int o = 0; o < currentRoom.objects[l].size(); o++) {
-				HCObject* currentObject = &currentRoom.objects[l][o];
+	for (auto& b : drawBuffers) {
+		gameWindow.draw(b.second, &currentRoom.textures[b.first]);
+	}
+	for (unsigned int l = 0; l < currentRoom.objects.size(); l++) {
+		for (unsigned int o = 0; o < currentRoom.objects[l].size(); o++) {
+			HCObject* currentObject = &currentRoom.objects[l][o];
 
-				for (auto& c : *currentObject->GetComponentsPtr()) {
-					gameWindow.setActive();
-					gameWindow.draw(c);
-					gameWindow.setActive(false);
-				}
+			for (auto& c : *currentObject->GetComponentsPtr()) {
+				gameWindow.setActive();
+				gameWindow.draw(c);
+				gameWindow.setActive(false);
 			}
 		}
-		if (debugInfoLevel >= DebugInfoLevels::MIN) {
-			//gameWindow.draw(chunkOutline);
-		}
+	}
+	if (debugInfoLevel >= DebugInfoLevels::MIN) {
+		//gameWindow.draw(chunkOutline);
+	}
 
-		gameWindow.draw(player.sprite.sheetS);
-		Vector2i currentChunkPos(camera.position / Vector2f(chunkSizePx, chunkSizePx));
+	gameWindow.draw(player.sprite.sheetS);
+	Vector2i currentChunkPos(camera.position / Vector2f(chunkSizePx, chunkSizePx));
 
 
-		for (int l = player.state.layer; l < currentRoom.chunks.size(); l++) { //Layer
-			for (int x = upLeftScrTile.x; x < downRightScrTile.x; x++) {
-				for (int y = upLeftScrTile.y; y < downRightScrTile.y; y++) {
-					if (emptychunks[x][y] == CHUNK_EMPTY)
-						y += 16;
+	for (int l = player.state.layer; l < currentRoom.chunks.size(); l++) { //Layer
+		for (int x = upLeftScrTile.x; x < downRightScrTile.x; x++) {
+			for (int y = upLeftScrTile.y; y < downRightScrTile.y; y++) {
+				if (emptychunks[x][y] == CHUNK_EMPTY)
+					y += 16;
 
-					WorldTile * currentTile = GetTileAtGlobalIndex(Vector2i(x, y), l, &currentRoom);
+				WorldTile * currentTile = GetTileAtGlobalIndex(Vector2i(x, y), l, &currentRoom);
 
-					bool nonempty = AddToDrawBuffer(*currentTile, drawBuffers, gameWindow);
-					if (emptychunks[x][y] == CHUNK_UNKNOWN && nonempty)
-						emptychunks[x][y] = CHUNK_NONEMPTY;
-					if (debugInfoLevel >= DebugInfoLevels::MAX)
-						debugdrawcalls++;
-				}
+				bool nonempty = AddToDrawBuffer(*currentTile, drawBuffers, gameWindow);
+				if (emptychunks[x][y] == CHUNK_UNKNOWN && nonempty)
+					emptychunks[x][y] = CHUNK_NONEMPTY;
+				if (debugInfoLevel >= DebugInfoLevels::MAX)
+					debugdrawcalls++;
 			}
 		}
-		for (auto& b : drawBuffers) {
-			gameWindow.draw(b.second, &currentRoom.textures[b.first]);
-		}
+	}
+	for (auto& b : drawBuffers) {
+		gameWindow.draw(b.second, &currentRoom.textures[b.first]);
+	}
 
 
 
-		for (unsigned int l = player.state.layer; l < currentRoom.objects.size(); l++) {
-			for (unsigned int o = 0; o < currentRoom.objects[l].size(); o++) {
-				HCObject* currentObject = &currentRoom.objects[l][o];
+	for (unsigned int l = player.state.layer; l < currentRoom.objects.size(); l++) {
+		for (unsigned int o = 0; o < currentRoom.objects[l].size(); o++) {
+			HCObject* currentObject = &currentRoom.objects[l][o];
 				
-				for (auto& c : *currentObject->GetComponentsPtr()) {
-					gameWindow.setActive();
-					gameWindow.draw(c);
-					gameWindow.setActive(false);
-				}
+			for (auto& c : *currentObject->GetComponentsPtr()) {
+				gameWindow.setActive();
+				gameWindow.draw(c);
+				gameWindow.setActive(false);
 			}
 		}
+	}
+
+
+	UpdateGameUI(gameWindow);
+
 #ifndef _RUNTIMEONLY
-		if (debugInfoLevel >= DebugInfoLevels::MIN) {
-			RectangleShape feetColLDraw = Tile::floatRectToRect(player.colliders.leftFootCol);
-			feetColLDraw.setFillColor(Color::Cyan);
-			gameWindow.draw(feetColLDraw);
+	if (debugInfoLevel >= DebugInfoLevels::MIN) {
+		RectangleShape feetColLDraw = Tile::floatRectToRect(player.colliders.leftFootCol);
+		feetColLDraw.setFillColor(Color::Cyan);
+		gameWindow.draw(feetColLDraw);
 
-			RectangleShape feetColRDraw = Tile::floatRectToRect(player.colliders.rightFootCol);
-			feetColRDraw.setFillColor(Color::Green);
-			gameWindow.draw(feetColRDraw);
+		RectangleShape feetColRDraw = Tile::floatRectToRect(player.colliders.rightFootCol);
+		feetColRDraw.setFillColor(Color::Green);
+		gameWindow.draw(feetColRDraw);
 
-			feetColLDraw = Tile::floatRectToRect(player.colliders.leftCeilCol);
-			feetColLDraw.setFillColor(Color::Cyan);
-			gameWindow.draw(feetColLDraw);
+		feetColLDraw = Tile::floatRectToRect(player.colliders.leftCeilCol);
+		feetColLDraw.setFillColor(Color::Cyan);
+		gameWindow.draw(feetColLDraw);
 
-			feetColRDraw = Tile::floatRectToRect(player.colliders.rightCeilCol);
-			feetColRDraw.setFillColor(Color::Green);
-			gameWindow.draw(feetColRDraw);
+		feetColRDraw = Tile::floatRectToRect(player.colliders.rightCeilCol);
+		feetColRDraw.setFillColor(Color::Green);
+		gameWindow.draw(feetColRDraw);
 
-			gameWindow.draw(Tile::floatRectToRect(player.colliders.pushCol));
+		gameWindow.draw(Tile::floatRectToRect(player.colliders.pushCol));
 
-			RectangleShape sonicPosDraw = RectangleShape(Vector2f(1, 1));
-			sonicPosDraw.setPosition(player.state.position);
-			sonicPosDraw.setFillColor(Color::Red);
-			gameWindow.draw(sonicPosDraw);
+		RectangleShape sonicPosDraw = RectangleShape(Vector2f(1, 1));
+		sonicPosDraw.setPosition(player.state.position);
+		sonicPosDraw.setFillColor(Color::Red);
+		gameWindow.draw(sonicPosDraw);
 
-			RectangleShape sonicColRect;
-			sonicColRect.setSize(Vector2f(player.sprite.width, player.sprite.height));
-			sonicColRect.setOrigin(player.sprite.origin);
-			sonicColRect.setRotation(player.sprite.sheetS.getRotation());
-			sonicColRect.setPosition(player.sprite.sheetS.getPosition());
-			sonicColRect.setFillColor(Color(0, 0, 0, 0));
-			sonicColRect.setOutlineColor(Color(0, 0, 255, 125));
-			sonicColRect.setOutlineThickness(-1);
-			gameWindow.draw(sonicColRect);
-			RectangleShape leftFootColPt;
-			leftFootColPt.setSize(Vector2f(1, 1));
-			leftFootColPt.setPosition(player.colliders.leftFootCol.left, player.colliders.footData.down.leftFootHeight);
-			leftFootColPt.setFillColor(Color::Blue);
-			gameWindow.draw(leftFootColPt);
-		}
+		RectangleShape sonicColRect;
+		sonicColRect.setSize(Vector2f(player.sprite.width, player.sprite.height));
+		sonicColRect.setOrigin(player.sprite.origin);
+		sonicColRect.setRotation(player.sprite.sheetS.getRotation());
+		sonicColRect.setPosition(player.sprite.sheetS.getPosition());
+		sonicColRect.setFillColor(Color(0, 0, 0, 0));
+		sonicColRect.setOutlineColor(Color(0, 0, 255, 125));
+		sonicColRect.setOutlineThickness(-1);
+		gameWindow.draw(sonicColRect);
+		RectangleShape leftFootColPt;
+		leftFootColPt.setSize(Vector2f(1, 1));
+		leftFootColPt.setPosition(player.colliders.leftFootCol.left, player.colliders.footData.down.leftFootHeight);
+		leftFootColPt.setFillColor(Color::Blue);
+		gameWindow.draw(leftFootColPt);
+	}
 	
 
 
 #endif
+
+	gameWindow.display();
 
 	window.clear(Color(23, 24, 25, 255));
 	Texture gameWindText = gameWindow.getTexture();

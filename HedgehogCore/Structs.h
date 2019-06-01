@@ -53,6 +53,9 @@ struct PlayerState {
 	bool rolling;
 	bool spindashing;
 	bool dropdashing;
+	bool dead;
+	uint16_t rings;
+	uint8_t lives;
 	float spindashWindup;
 };
 struct TextureRefInfo {
@@ -68,18 +71,19 @@ struct TileCollisionTypes {
 
 
 class HCCollidable {
+public:
 	virtual bool CheckCollision(sf::FloatRect collider, PlayerState state) = 0;
 	virtual short GetHeight(sf::Vector2f position, int groundMode) = 0;
 };
 
 
-struct WorldTile {
+struct WorldTile: public HCCollidable {
 	sf::Vector2<unsigned short> chunk;
 	short collisiontype = TileCollisionTypes::Solid;
 	sf::Vector2<unsigned short> inChunkPos;
 	int layer;
 	Tile *tile;
-	bool CheckCollision(sf::FloatRect collider, PlayerState state) {
+	virtual bool CheckCollision(sf::FloatRect collider, PlayerState state) override  {
 		if (collisiontype == TileCollisionTypes::Jumpthrough && state.speed.y < 0) 
 			return false;
 		if (collisiontype == TileCollisionTypes::Intangible) 
@@ -87,16 +91,8 @@ struct WorldTile {
 		sf::FloatRect thisCol(this->GetPosition(), sf::Vector2f(16, 16));
 		return thisCol.intersects(collider);
 	}
-	sf::Vector2f GetPosition() const { return sf::Vector2f(sf::Vector2i(this->inChunkPos) * 16 + sf::Vector2i(chunk) * 256); }
-	void SetPosition(sf::Vector2i position) { this->chunk = sf::Vector2<unsigned short>(position / 16); this->inChunkPos = sf::Vector2<unsigned short>(std::fmod(position.x, 16), std::fmod(position.y, 16)); }
-	sf::VertexArray draw(sf::RenderTarget &target, sf::Color multCol = sf::Color::White) const {
-		if (!tile) 
-			return sf::VertexArray(); 
-		
-		return tile->draw(sf::Vector2i(this->GetPosition()), target, multCol); 
 
-	}
-	short GetHeight(sf::Vector2f position, int groundMode) {
+	virtual short GetHeight(sf::Vector2f position, int groundMode) override {
 		sf::Vector2i localPos(position - this->GetPosition());
 		if (!tile) return 0;
 		switch (groundMode) {
@@ -112,6 +108,18 @@ struct WorldTile {
 			yeet std::exception("GetHeight(): groundMode out of range.");
 		}
 	}
+
+
+	sf::Vector2f GetPosition() const { return sf::Vector2f(sf::Vector2i(this->inChunkPos) * 16 + sf::Vector2i(chunk) * 256); }
+	void SetPosition(sf::Vector2i position) { this->chunk = sf::Vector2<unsigned short>(position / 16); this->inChunkPos = sf::Vector2<unsigned short>(std::fmod(position.x, 16), std::fmod(position.y, 16)); }
+	sf::VertexArray draw(sf::RenderTarget &target, sf::Color multCol = sf::Color::White) const {
+		if (!tile) 
+			return sf::VertexArray(); 
+		
+		return tile->draw(sf::Vector2i(this->GetPosition()), target, multCol); 
+
+	}
+	
 	bool operator== (WorldTile &rhs);
 	sf::FloatRect getOutline() {
 		return sf::FloatRect(GetPosition(), { 16.f, 16.f });
@@ -279,6 +287,17 @@ struct Player : boost::noncopyable {
 		this->colliders = PlayerColliderSet();
 		this->sprite = SpriteSheet();
 		this->physics = PhysicsConsts();
+	}
+
+	void hurt(Room *room) {
+		if (state.rings == 0) {
+			state.dead = true;
+		}
+		else {
+			uint16_t rings = state.rings;
+			state.rings = 0;
+			//TODO: Rings spawning
+		}
 	}
 };
 

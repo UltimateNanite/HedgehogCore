@@ -1,6 +1,7 @@
 #include "stdafx.h"
 #include "HCObject.h"
 #include "Room.h"
+#include "HCComponent.h"
 
 HCObject* NewObject(std::vector<HCComponent*> components, int layer, Room* currentRoom, std::string name) {
 	if (layer < 0 || layer >= currentRoom->objects.size()) {
@@ -26,6 +27,15 @@ HCObject* NewObject(std::vector<HCComponent*> components, int layer, Room* curre
 	return objInMem;
 };
 
+boost::ptr_vector<HCComponent>* HCObject::GetComponentsPtr()
+{
+	return &components;
+}
+
+const boost::ptr_vector<HCComponent>* HCObject::GetConstComponentsPtr() const
+{
+	return &components;
+}
 HCObject::HCObject(std::string name)
 {
 	this->name = name;
@@ -56,14 +66,14 @@ void HCObject::AddComponent(HCComponent *component) {
 	this->components.push_back(component);
 }
 
-sf::Vector2f HCObject::GetSize() {
+sf::Vector2f HCObject::GetSize() const {
 	return size;
 }
 void HCObject::SetSize(sf::Vector2f size)
 {
 	this->size = size;
 }
-sf::Vector2f HCObject::GetPosition() {
+sf::Vector2f HCObject::GetPosition() const {
 	return position;
 }
 

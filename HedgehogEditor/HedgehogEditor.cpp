@@ -13,6 +13,7 @@
 #include "AssetSelector.h"
 #include "imgui-extra.h"
 #include "TinyFileDialog.h"
+#include "HCCompFactory.h"
 Room currentRoom(nullptr);
 
 
@@ -502,6 +503,9 @@ int main()
 	Clock averageDeltaClock;
 	int framesForAverage = 0;
 	Clock avgMsClock;
+
+	window.setFramerateLimit(60);
+
 	while (running) {
 		
 
@@ -777,7 +781,7 @@ void render(sf::RenderWindow & window, sf::Time deltaTime, int framesPerSecond) 
 
 				bool nonempty = AddToDrawBuffer(*currentTile, drawBuffers, gameWindow);
 				if (emptychunks[x][y] == CHUNK_UNKNOWN && nonempty) {
-					std::cout << "Set chunk to nonempty.";
+					std::cout << "Set chunk to nonempty.\n";
 					emptychunks[x][y] = CHUNK_NONEMPTY;
 				}
 			}
@@ -834,7 +838,7 @@ void render(sf::RenderWindow & window, sf::Time deltaTime, int framesPerSecond) 
 		debugDrawCalls++;
 	}
 
-
+	static sf::Vector2f previewDisplayPos;
 	if (tool == Tools::Pencil || tool == Tools::Brush) {
 		Sprite tilePlacePreview;
 		Vector2i mousePos = Vector2i(hcMouseToWorld(Mouse::getPosition(window), cam, gameWindow.getSize()));
@@ -862,6 +866,10 @@ void render(sf::RenderWindow & window, sf::Time deltaTime, int framesPerSecond) 
 			if (previewTopLeft.y + 48 > textureSize.y)
 				previewSize.y = 32;
 
+			previewTopLeft = previewTopLeft - raw_previewTopLeft;
+			previewDisplayPos.x = Lerp(previewTopLeft.x, previewDisplayPos.x, 0.8f);
+			previewDisplayPos.y = Lerp(previewTopLeft.y, previewDisplayPos.y, 0.8f);
+
 			tilePlacePreview.setTextureRect(
 				IntRect(
 					previewTopLeft,
@@ -869,7 +877,7 @@ void render(sf::RenderWindow & window, sf::Time deltaTime, int framesPerSecond) 
 				)
 			);
 			tilePlacePreview.setPosition(
-				tilePlacePreview.getPosition() + Vector2f(previewTopLeft - raw_previewTopLeft));
+				tilePlacePreview.getPosition() + previewDisplayPos);
 			tilePlacePreview.setColor(Color(255, 255, 255, previewOpacity));
 			gameWindow.draw(tilePlacePreview);
 
@@ -1171,9 +1179,9 @@ void im_render(sf::RenderWindow& window) {
 			if (ImGui::BeginPopup("Select asset##add component"))
 			{
 				int index;
-				std::vector<std::string> components = { "SpriteRenderer", "Renderer3D", "SheetAnimator" };
+				std::vector<std::string> components = { "SpriteRenderer", "Renderer3D", "SheetAnimator", "CollisionHazard" };
 				if (ImGui::ListBox("Type", &index, components)) {
-					switch (index) {
+					/*switch (index) {
 					case 0:
 						selectedObject->AddComponent(new SpriteRenderer(selectedObject, &currentRoom));
 						break;
@@ -1182,9 +1190,18 @@ void im_render(sf::RenderWindow& window) {
 						break;
 					case 2:
 						selectedObject->AddComponent(new SheetAnimator(selectedObject, &currentRoom));
+						break;
+					case 3:
+						selectedObject->AddComponent(new CollisionHazard(selectedObject, &currentRoom));
 					default:
 						break;
-					}
+					}*/
+					HCCompFactory* factory = HCCompFactory::Get();
+					HCComponent* component = factory->CreateComponent(components[index], &currentRoom, selectedObject);
+					if (component)
+						selectedObject->AddComponent(component);
+					else
+						std::cout << "Could not create component of type " << components[index] << " (CreateComponent() returned nullptr)\n";
 					ImGui::CloseCurrentPopup();
 				}
 				ImGui::EndPopup();

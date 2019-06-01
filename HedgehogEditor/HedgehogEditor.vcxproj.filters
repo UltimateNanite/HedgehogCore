@@ -63,6 +63,9 @@
     <ClCompile Include="imgui-extra.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\HedgehogCore\HCCompFactory.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\HedgehogCore\HCComponent.h">
@@ -126,6 +129,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="imgui-extra.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\HedgehogCore\HCCompFactory.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

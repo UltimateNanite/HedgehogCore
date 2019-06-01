@@ -19,7 +19,7 @@ public:
 	std::vector<std::string> audionames;
 	void UnloadAssets();
 	void LoadAssets();
-	std::string path;// = "C:\\Users\\HP\\Documents\\Source\\Repos\\HCGit\\HedgehogCreator\\HedgehogCreator\\Debug\\Projects\\New Project\\";
+	std::string path;
 	boost::container::stable_vector<Room> *GetRoomsPtr();
 	std::string name = "New Project";
 	~Project();

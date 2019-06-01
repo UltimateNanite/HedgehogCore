@@ -1,6 +1,5 @@
 #pragma once
 #include "Includes.h"
-
 #include "HCComponent.h"
 //#include "AssetSelector.h"
 class Room;
@@ -15,9 +14,8 @@ private:
 	HCComponent* currentComponent;
 	boost::ptr_vector<HCComponent> components;
 public:
-	boost::ptr_vector<HCComponent> *GetComponentsPtr() {
-		return &components;
-	}
+	boost::ptr_vector<HCComponent>* GetComponentsPtr();
+	const boost::ptr_vector<HCComponent>*  GetConstComponentsPtr() const;
 
 	float activradius = 500;
 	bool colliding;
@@ -33,9 +31,9 @@ public:
 
 	void AddComponent(HCComponent *component);
 	std::string name;
-	sf::Vector2f GetSize();
+	sf::Vector2f GetSize() const;
 	void SetSize(sf::Vector2f size);
-	sf::Vector2f GetPosition();
+	sf::Vector2f GetPosition() const;
 	virtual sf::FloatRect getOutline();
 
 	template<typename T>

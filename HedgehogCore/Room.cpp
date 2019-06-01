@@ -2,6 +2,7 @@
 #include "Room.h"
 #include "Project.h"
 #include "Structs.h"
+#include "HCCompFactory.h"
 #include <filesystem>
 namespace fs = std::filesystem;
 TextureRefInfo WorldTileToTextureRefInfo(WorldTile tile) {
@@ -67,7 +68,7 @@ std::ofstream& operator<<(std::ofstream& ofs, const Room& rt) {
 					for (int y = 0; y < 16; y++) {
 						TextureRefInfo currentTileRef = WorldTileToTextureRefInfo(rt.chunks[l][cx][cy][x][y]);
 						if (currentTileRef.name != "") {
-							ofs << l << ":" << cx << ":" << cy << ":" << x << ":" << y << ":" << 0 << currentTileRef.name << '|' << "," << currentTileRef.textureRectIndex.x << "," << currentTileRef.textureRectIndex.y << ".";
+							ofs << l << ":" << cx << ":" << cy << ":" << x << ":" << y << ":" << 0 << currentTileRef.name << "," << currentTileRef.textureRectIndex.x << "," << currentTileRef.textureRectIndex.y << ".";
 						}
 						
 					}
@@ -75,7 +76,7 @@ std::ofstream& operator<<(std::ofstream& ofs, const Room& rt) {
 			}
 		}
 	}
-	ofs << -1; //End of Tiles
+	ofs << -1 << std::endl; //End of Tiles
 
 	//Save tile data to .tdata files
 	for (auto& it : rt.tilemapdata) {
@@ -84,8 +85,19 @@ std::ofstream& operator<<(std::ofstream& ofs, const Room& rt) {
 		fileout << it.second;
 	}
 
-	for (auto& obj : rt.objects) {
-		
+	for (int l = 0; l < rt.objects.size(); l++) {
+		for (auto& obj : rt.objects[l]) {
+			ofs << l << ":" << obj.GetPosition().x << ":" << obj.GetPosition().y << obj.GetSize().x << ":" << obj.GetSize().y <<" " << obj.name <<" {";
+			
+			
+			for (auto& comp : *obj.GetConstComponentsPtr()) {
+				std::string name = typeid(comp).name();
+				name = name.substr(6);
+				ofs << name << ":";
+				ofs << comp << ", ";
+			}
+			ofs << "}";
+		}
 	}
 	return ofs;
 }
@@ -128,27 +140,73 @@ std::ifstream& operator>>(std::ifstream& ifs, Room& rt) {
 		int delim = 0;
 		ifs >> del1 >> cx >> del2 >> cy >> del3 >> x >> del4 >> y >> del5 >> delim;
 
+		if (del1 != ':') break;
+		
 		char namein = '\0';
 		int nametimeout = 1000;
 		while (nametimeout > 0) {
 			nametimeout--;
 			ifs >> namein;
-			if (namein == '|')
+			if (namein == ',')
 				break;
 			currentTileRef.name += namein;
 		}
 		if (nametimeout == 0)
 			throw std::runtime_error("Room file corrupted.");
 		
-		ifs >> del6 >> currentTileRef.textureRectIndex.x >> del7 >> currentTileRef.textureRectIndex.y >> del8;
+		ifs >> currentTileRef.textureRectIndex.x >> del7 >> currentTileRef.textureRectIndex.y >> del8;
 		rt.chunks[l][cx][cy][x][y] = TextureRefToWorldTile(currentTileRef, sf::Vector2i(0, 0), &rt);
 		rt.chunks[l][cx][cy][x][y].chunk = sf::Vector2<unsigned short>(cx, cy);
 		rt.chunks[l][cx][cy][x][y].inChunkPos = sf::Vector2<unsigned short>(x, y);
-		if (x == -1 || ifs.eof()) break;
+		if (x == -1 || ifs.eof()) 
+			break;
 
-			
+		
+	}
 
 
+
+	//Objects
+	while (ifs.good()) {
+		
+
+		char del1 = '/0';
+		int l;
+		char del2 = '/0';
+		float x;
+		char del3 = '/0';
+		float y;
+		char del4 = '/0';
+		float xs;
+		char del5 = '/0';
+		float ys;
+		char del6 = '/0';
+		std::string name;
+		char del7 = '/0';
+		ifs >> l >> del1 >> x >> del2 >> y >> del3 >> xs >> del4 >> ys >> del5;
+		char in = '/0';
+
+		do {
+			ifs >> in;
+			name += in;
+		} while (in != '{');
+
+		HCObject obj(name);
+		while (in != '}') {
+
+			std::string result;
+			while (in != ':') {
+				ifs >> in;
+				result += in;
+			}
+			HCCompFactory* factory = HCCompFactory::Get();
+
+			factory->LoadComponent(ifs, &rt, &obj);
+			ifs >> in;
+			if (in != ',')
+				throw std::exception("Room file corrupt.");
+			ifs >> in;
+		}
 	}
 	
 	return ifs;

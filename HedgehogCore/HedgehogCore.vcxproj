@@ -160,6 +160,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="AssetSelector.cpp" />
+    <ClCompile Include="HCCompFactory.cpp" />
     <ClCompile Include="HCComponent.cpp" />
     <ClCompile Include="HCObject.cpp" />
     <ClCompile Include="HedgehogCore.cpp" />
@@ -175,6 +176,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="AssetSelector.h" />
+    <ClInclude Include="HCCompFactory.h" />
     <ClInclude Include="HCComponent.h" />
     <ClInclude Include="HCObject.h" />
     <ClInclude Include="Includes.h" />

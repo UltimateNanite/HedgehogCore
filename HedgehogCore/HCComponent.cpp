@@ -41,10 +41,16 @@ namespace ImGui
 #endif
 #endif
 
-
+std::ofstream& operator<<(std::ofstream& ofs, const HCComponent& comp) {
+	return comp.filestream_out(ofs);
+}
+std::ifstream& operator>>(std::ifstream& ifs, HCComponent& comp) {
+	return comp.filestream_in(ifs);
+}
 void HCComponent::draw(sf::RenderTarget& target, sf::RenderStates states) const 
 {
 }
+
 
 void Renderer3D::Update(sf::Time dt, Player& player) {
 	this->dt = dt;
@@ -226,36 +232,74 @@ void SheetAnimator::draw(sf::RenderTarget& target, sf::RenderStates states) cons
 
 //Saving/loading operator overloads
 //TODO: Implement these
-//TODO: Use these
 
-std::ofstream& Renderer3D::operator<<(std::ofstream& ofs)
+
+
+std::ofstream& Renderer3D::filestream_out(std::ofstream& ofs) const
 {
 	return ofs;
 }
-std::ifstream& Renderer3D::operator>>(std::ifstream& ifs)
+std::ifstream& Renderer3D::filestream_in(std::ifstream& ifs)
 {
 	return ifs;
 }
 
+HCComponent* Renderer3D::create(Room* room, HCObject* parent)
+{
+	return new Renderer3D(parent, room);
+}
 
-std::ofstream& SpriteRenderer::operator<<(std::ofstream& ofs)
+HCComponent* Renderer3D::factory_create(std::ifstream& ifs)
+{
+	Renderer3D *result = new Renderer3D();
+	ifs >> *result;
+	return result;
+}
+
+
+std::ofstream& SpriteRenderer::filestream_out(std::ofstream& ofs) const
 {
 	return ofs;
 }
-std::ifstream& SpriteRenderer::operator>>(std::ifstream& ifs)
+std::ifstream& SpriteRenderer::filestream_in(std::ifstream& ifs)
 {
 	return ifs;
 }
 
+HCComponent* SpriteRenderer::create(Room* room, HCObject* parent)
+{
+	return new SpriteRenderer(parent, room);
+}
 
-std::ofstream& SheetAnimator::operator<<(std::ofstream& ofs)
+HCComponent* SpriteRenderer::factory_create(std::ifstream& ifs)
+{
+	//TODO: Implement
+	return nullptr;
+}
+
+
+std::ofstream& SheetAnimator::filestream_out(std::ofstream& ofs) const
 {
 	return ofs;
 }
-std::ifstream& SheetAnimator::operator>>(std::ifstream& ifs)
+std::ifstream& SheetAnimator::filestream_in(std::ifstream& ifs)
 {
 	return ifs;
 }
+
+HCComponent* SheetAnimator::create(Room* room, HCObject* parent)
+{
+	return new SheetAnimator(parent, room);
+}
+
+HCComponent* SheetAnimator::factory_create(std::ifstream& ifs)
+{
+	return nullptr;
+}
+
+
+
+
 
 bool ObjectCollidable::CheckCollision(sf::FloatRect collider, PlayerState state)
 {
@@ -265,4 +309,50 @@ bool ObjectCollidable::CheckCollision(sf::FloatRect collider, PlayerState state)
 short ObjectCollidable::GetHeight(sf::Vector2f position, int groundMode)
 {
 	return 0;
+}
+
+void CollisionHazard::Update(sf::Time dt)
+{
+	return;
+}
+
+void CollisionHazard::Update(sf::Time dt, Player& player)
+{
+	sf::FloatRect thisCol(parent->GetPosition(), parent->GetSize());
+
+	if (player.colliders.leftCeilCol.intersects(thisCol) ||
+		player.colliders.rightCeilCol.intersects(thisCol) ||
+		player.colliders.leftFootCol.intersects(thisCol) ||
+		player.colliders.rightFootCol.intersects(thisCol) ||
+		player.colliders.pushCol.intersects(thisCol)) {
+
+		player.hurt(room);
+	}
+}
+
+void CollisionHazard::im_draw()
+{
+#ifdef HC_EDITOR
+	ImGui::Text("(No settings for CollisionHazard)");
+#endif
+}
+
+std::ofstream& CollisionHazard::filestream_out(std::ofstream& ofs) const
+{
+	return ofs;
+}
+
+std::ifstream& CollisionHazard::filestream_in(std::ifstream& ifs)
+{
+	return ifs;
+}
+
+HCComponent* CollisionHazard::create(Room* room, HCObject* parent)
+{
+	return new CollisionHazard(parent, room);
+}
+
+HCComponent* CollisionHazard::factory_create(std::ifstream& ifs)
+{
+	return new CollisionHazard(nullptr, nullptr);
 }

@@ -157,6 +157,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="..\HedgehogCore\HCCompFactory.cpp" />
     <ClCompile Include="..\HedgehogCore\HCComponent.cpp" />
     <ClCompile Include="..\HedgehogCore\HCObject.cpp" />
     <ClCompile Include="..\HedgehogCore\ParallaxLayer.cpp" />
@@ -175,6 +176,7 @@
     <ClCompile Include="imgui_widgets.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="..\HedgehogCore\HCCompFactory.h" />
     <ClInclude Include="..\HedgehogCore\HCComponent.h" />
     <ClInclude Include="..\HedgehogCore\HCObject.h" />
     <ClInclude Include="..\HedgehogCore\Includes.h" />
