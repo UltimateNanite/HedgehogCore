@@ -1,15 +1,23 @@
-# HedgehogCore
+# HedgehogCreator
 
-HedgehogCore is an SFML-based game "engine" (sort of) meant to accurately replicate the gameplay of the 90s-era Sonic the Hedgehog games.
+HedgehogCreator is an SFML-based toolkit for creating Sonic fangames, meant to accurately replicate the gameplay and physics of the 90s-era games.
+The kit consists of two programs: **HedgehogEditor**, the level editor, and **HedgehogCore**, the runtime.
 
-(The engine is not yet in a usable state.)
+
+NOTE: HedgehogCreator is not yet in a usable state, and this repository currently exists solely for version control purposes. However, if you're interested, you're more than welcome to try out what works so far.
+
 The features currently implemented include:
-- Near-complete Sonic gameplay
+- (Near-complete) Genesis Sonic gameplay
 - Accurate tile-based collision
-- Parallax backgrounds  
+- Parallax backgrounds
+- Game objects with Unity-esque component-based behaviour
+  ( Implemented components include: )
+    - SpriteRenderer
+    - SheetAnimator
+    - CollisionHazard
 
 Features currently in development
-- Sprite-based objects with Unity-esque component-based behaviour
+
 - The accompanying editor HedgehogEditor
 - Saving & loading of rooms
 
@@ -17,7 +25,7 @@ Planned features include
 - Rings
 - UI elements
 - Tails & Knuckles' gameplay
-- Collision with sprite-based objects
+- A more sophisticated and extensible collision system
 - Tilemap editing
 
 And yeah, the codebase is a bit of a mess.
