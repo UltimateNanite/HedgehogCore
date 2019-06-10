@@ -100,7 +100,7 @@ T bound(T lowerBound, T real, T top) {
 	return std::min(std::max(real, lowerBound), top);
 }
 
-
+long long int globalTimer = 0;
 
 template<class T> inline T operator~ (T a) { return (T)~(int)a; }
 template<class T> inline T operator| (T a, T b) { return (T)((int)a | (int)b); }
@@ -136,21 +136,24 @@ constexpr int InverseGroundMode(int groundMode) {
 	}
 	return -1;
 }
-
-bool CollisionHandling(sf::FloatRect col, WorldTile * currentTile, WorldTile * *assignedTilePtr, Player & player, bool& hasCollided, bool floor = true) {
+enum CollisionHandleMode {
+	Floor,
+	Push,
+	Ceil
+};
+bool CollisionHandling(sf::FloatRect col, WorldTile * currentTile, WorldTile * *assignedTilePtr, Player & player, bool& hasCollided, CollisionHandleMode mode) {
+	bool floor = mode == CollisionHandleMode::Floor;
 	bool recognized = (player.state.speed.y >= 0 || !floor || !player.state.airborne);
 	if (*assignedTilePtr == nullptr && (recognized || !player.state.airborne))
 		* assignedTilePtr = currentTile;
 
 	float tempHeight = currentTile->GetHeight(sf::Vector2f(col.left, col.top), std::abs(player.state.groundMode));
 
-	bool validHeight = ((
-		(player.state.groundMode == GROUNDMODE_FLOOR || player.state.groundMode == GROUNDMODE_RIGHTWALL || player.state.groundMode == GROUNDMODE_LEFTWALL) && tempHeight != 0) ||
-		player.state.groundMode == GROUNDMODE_CEILING && tempHeight != 0);
-	if (currentTile->tile) {
+	bool validHeight = (tempHeight != 0);
+	if (currentTile->tile && !floor) {
 		if (player.state.groundMode == GROUNDMODE_FLOOR) {
 			int localPos = col.left - currentTile->GetPosition().x;
-			validHeight = currentTile->GetPosition().y + currentTile->tile->GetHeight(localPos, InverseGroundMode(GROUNDMODE_FLOOR), false) >= player.colliders.pushCol.top || !floor;
+			validHeight = currentTile->GetPosition().y + currentTile->tile->GetHeight(localPos, InverseGroundMode(GROUNDMODE_FLOOR), false) >= player.colliders.pushCol.top;
 		}
 		else if (player.state.groundMode == GROUNDMODE_RIGHTWALL) {
 			//int localPos = player.state.position.x;
@@ -194,6 +197,8 @@ WorldTile* GetTileAtGlobalIndex(sf::Vector2i index, int layer, Room * currentRoo
 	using namespace sf;
 	index.x = std::max(index.x, 0);
 	index.y = std::max(index.y, 0);
+	index.x = std::min(index.x, 8 * 64 - 1);
+	index.y = std::min(index.y, 8 * 16 - 1);
 	Vector2i currentChunk(index.x / 16, index.y / 16);
 	Vector2i currentPosInChunk(std::fmod(index.x, 16), std::fmod(index.y, 16));
 	return &currentRoom->chunks[layer][currentChunk.x][currentChunk.y][currentPosInChunk.x][currentPosInChunk.y];
@@ -203,13 +208,7 @@ WorldTile* GetTileAtGlobalIndex(sf::Vector2i index, int layer, Room * currentRoo
 bool WorldTile::operator== (WorldTile & rhs) {
 	return this->GetPosition() == rhs.GetPosition();
 }
-namespace menu
-{
-	bool projectWindow = true;
-	bool toolsWindow = true;
-	bool objectsWindow = true;
-	bool playerWindow = true;
-}
+
 
 class DebugInfoLevels {
 public:
@@ -279,7 +278,7 @@ bool playIntro(sf::RenderWindow& window) {
 
 		window.clear(Color::Black);
 
-		Text poweredBy("powered by", consolas);
+		Text poweredBy = Text("powered by", consolas);
 
 		window.draw(poweredBy);
 		window.display();
@@ -302,7 +301,7 @@ int main(int argc, char* argv[])
 	//currentProject = Project();
 	//currentProject.GetRoomsPtr()->push_back(Room(&currentProject));
 
-	
+
 
 
 #ifdef _RUNTIMEONLY
@@ -406,13 +405,31 @@ int main(int argc, char* argv[])
 		if (arg == "-d:2") {
 			debugInfoLevel = DebugInfoLevels::MAX;
 		}
+		if (arg == "-dri") {
+			window.setVisible(false);
+			std::string path;
+			std::cout << "HedgehogCreator - Debug Room Input (D.R.I.)\nPlease enter the room filename\n > ";
+			std::cin >> path;
+			std::ifstream ifs(path);
+			std::cout << "Loading " + path << std::endl;
+			if (!(fs::exists(path))) {
+				std::cout << "ERROR: File does not exist.\n";
+				throw std::runtime_error("File does not exist.");
+			}
+
+			ifs >> currentRoom;
+			startupRoomOverride = true;
+			ifs.close();
+			window.setVisible(true);
+		}
 		if (arg._Starts_with("-r:")) {
 			std::ifstream ifs(arg.substr(3));
 			std::cout << "Loading " + arg.substr(3) << std::endl;
 			if (!(fs::exists(arg.substr(3)))) {
+				std::cout << "ERROR: File does not exist.\n";
 				throw std::runtime_error("File does not exist.");
 			}
-			//currentRoom = &currentProject.GetRoomsPtr()->at(0);
+			
 			ifs >> currentRoom;
 			startupRoomOverride = true;
 			ifs.close();
@@ -529,7 +546,7 @@ int main(int argc, char* argv[])
 
 			while (fixedTimer > timestep) {
 
-				
+				globalTimer++;
 				FixedUpdate(state, player, dt);
 				fixedTimer -= timestep;
 
@@ -537,6 +554,7 @@ int main(int argc, char* argv[])
 
 			profilerTimes::updateTime = profilerClock.getElapsedTime() - profilerTimes::other;
 
+			
 			Draw(window, player);
 
 			profilerTimes::drawTime = profilerClock.getElapsedTime() - profilerTimes::other - profilerTimes::updateTime;
@@ -638,6 +656,10 @@ void FixedUpdate(GlobalGameState & gamestate, Player & player, sf::Time dt) {
 
 		//Input & movement
 		//REMINDER: Acc, dec and frc are applied to GSPD, not player.state.speed.x.
+		
+		if (player.state.dead)
+			player.state.knockback = true; //Make sure player doesn't move while dead
+		
 		if (player.state.spindashWindup < 0)
 			player.state.spindashWindup = 0;
 
@@ -645,7 +667,7 @@ void FixedUpdate(GlobalGameState & gamestate, Player & player, sf::Time dt) {
 			player.state.spindashWindup *= 0.96875 / (float)gamestate.updatesPerFrame;
 
 
-		if (Keyboard::isKeyPressed(Keyboard::A) && !player.state.crouched && player.state.horizontalLockTimer == 0) {
+		if (Keyboard::isKeyPressed(Keyboard::A) && !player.state.crouched && player.state.horizontalLockTimer == 0 && !player.state.knockback) {
 			player.state.lastDirection = Direction::Left;
 			if (player.state.airborne) {
 				if (player.state.pushState > -1 && player.state.speed.x > -6) {
@@ -666,7 +688,7 @@ void FixedUpdate(GlobalGameState & gamestate, Player & player, sf::Time dt) {
 				}
 			}
 		}
-		else if (Keyboard::isKeyPressed(Keyboard::D) && !player.state.crouched && player.state.horizontalLockTimer == 0) {
+		else if (Keyboard::isKeyPressed(Keyboard::D) && !player.state.crouched && player.state.horizontalLockTimer == 0 && !player.state.knockback) {
 			player.state.lastDirection = Direction::Right;
 			if (player.state.airborne) {
 				if (player.state.pushState != Direction::Left && player.state.speed.x < 6) {
@@ -689,7 +711,7 @@ void FixedUpdate(GlobalGameState & gamestate, Player & player, sf::Time dt) {
 		}
 
 
-		if (Keyboard::isKeyPressed(Keyboard::S)) {
+		if (Keyboard::isKeyPressed(Keyboard::S) && !player.state.knockback) {
 			if (!player.state.crouched && !player.state.rolling) {
 
 				if (abs(player.state.groundSpeed) < 0.1f && !player.state.airborne) {
@@ -775,7 +797,7 @@ void FixedUpdate(GlobalGameState & gamestate, Player & player, sf::Time dt) {
 
 		if ((unsigned int)player.state.layer > currentRoom.chunks.size() - 1)
 			player.state.layer = currentRoom.chunks.size() - 1;
-		//Drawing layers behind Sonic
+		
 
 
 
@@ -802,8 +824,14 @@ void FixedUpdate(GlobalGameState & gamestate, Player & player, sf::Time dt) {
 				player.state.speed.y / (float)gamestate.updatesPerFrame);
 
 		player.state.position = Vector2f(std::max(player.state.position.x, 0.f), std::max(player.state.position.y, 0.f));
-		player.state.position = Vector2f(std::min(player.state.position.x, currentRoom.chunks[0].size() * (float)chunkSizePx - 1), std::min(player.state.position.y, currentRoom.chunks[0][0].size() * (float)chunkSizePx - 1));
-		bool hasCollided = false;
+		
+		if (!player.state.dead)
+			player.state.position = Vector2f(std::min(player.state.position.x, currentRoom.chunks[0].size() * (float)chunkSizePx - 1), std::min(player.state.position.y, currentRoom.chunks[0][0].size() * (float)chunkSizePx - 1));
+		
+		if (!player.state.dead && player.state.position.y >= 8 * (float)chunkSizePx - 1) {
+			player.kill();
+		}
+		bool& hasCollided = player.state.hasCollided;
 
 
 
@@ -813,271 +841,290 @@ void FixedUpdate(GlobalGameState & gamestate, Player & player, sf::Time dt) {
 
 
 
+		bool isDetectingCollision = !player.state.dead;
 
 
-
-		hasCollided = false;
-		std::vector<WorldTile*> leftTiles = GetTilesWithinRange(player.colliders.leftFootCol, player.state.layer);
-		for (auto currentTile : leftTiles) {
-			if (currentTile->CheckCollision(player.colliders.leftFootCol, player.state))
-				CollisionHandling(player.colliders.leftFootCol, currentTile, &player.colliders.leftFootTile, player, hasCollided);
-		}
-		std::vector<WorldTile*> rightTiles = GetTilesWithinRange(player.colliders.rightFootCol, player.state.layer);
-		for (auto currentTile : rightTiles) {
-			if (currentTile->CheckCollision(player.colliders.rightFootCol, player.state))
-				CollisionHandling(player.colliders.rightFootCol, currentTile, &player.colliders.rightFootTile, player, hasCollided);
-		}
-		//Collision issues likely to do with incorrect truncating. std::round()?
-
-		Vector2i currentTileWorldIndex = Vector2i(player.state.position) / 16;
-
-
-		player.colliders.Update(player.state, state.updatesPerFrame);
-
-
-		Vector2i currentChunkPos(Vector2f((Vector2i(player.state.position) / 16 * 16)) / Vector2f((int)chunkSizePx, chunkSizePx));
-
-
-		if (player.state.pushState == Direction::Right) {
-			if (player.colliders.rightPushTile->tile) {
-				if (player.colliders.pushCol.top + 1 < player.colliders.rightPushTile->GetPosition().y
-					|| player.colliders.pushCol.top + 1 > player.colliders.rightPushTile->GetPosition().y + TILE_HEIGHT
-					|| player.state.speed.x < 0) {
-					player.state.pushState = Direction::None;
-					player.colliders.rightPushTile = nullptr;
-				}
+		if (isDetectingCollision) {
+			hasCollided = false;
+			std::vector<WorldTile*> leftTiles = GetTilesWithinRange(player.colliders.leftFootCol, player.state.layer);
+			for (auto currentTile : leftTiles) {
+				if (currentTile->CheckCollision(player.colliders.leftFootCol, player.state))
+					CollisionHandling(player.colliders.leftFootCol, currentTile, &player.colliders.leftFootTile, player, hasCollided, CollisionHandleMode::Floor);
 			}
-			else if (scriptpushcontrol && player.state.speed.x < 0)
-				player.state.pushState = Direction::None;
-			else if (!scriptpushcontrol)
-				player.state.pushState = Direction::None;
-		}
-		else if (player.state.pushState == Direction::Left) {
-			if (player.colliders.leftPushTile->tile) {
-				if (player.colliders.pushCol.top + 1 < player.colliders.leftPushTile->GetPosition().y
-					|| player.colliders.pushCol.top + 1 > player.colliders.leftPushTile->GetPosition().y + TILE_HEIGHT
-					|| player.state.speed.x > 0) {
-					player.state.pushState = Direction::None;
-					player.colliders.leftPushTile = nullptr;
-				}
+			std::vector<WorldTile*> rightTiles = GetTilesWithinRange(player.colliders.rightFootCol, player.state.layer);
+			for (auto currentTile : rightTiles) {
+				if (currentTile->CheckCollision(player.colliders.rightFootCol, player.state))
+					CollisionHandling(player.colliders.rightFootCol, currentTile, &player.colliders.rightFootTile, player, hasCollided, CollisionHandleMode::Floor);
 			}
-			else if (scriptpushcontrol && player.state.speed.x > 0)
-				player.state.pushState = Direction::None;
-			else if (!scriptpushcontrol)
-				player.state.pushState = Direction::None;
-		}
+			//Collision issues likely to do with incorrect truncating. std::round()?
+
+			Vector2i currentTileWorldIndex = Vector2i(player.state.position) / 16;
 
 
+			player.colliders.Update(player.state, state.updatesPerFrame);
 
-		WorldTile* throwAway = nullptr; //Throwaway variable for CollisionHandling() to write to
-		bool throwAwayBool = false;
-		if (player.state.groundMode == GROUNDMODE_FLOOR) {
-			for (auto currentTile : GetTilesWithinRange(player.colliders.leftCeilCol, player.state.layer)) {
-				if (currentTile->CheckCollision(player.colliders.leftCeilCol, player.state)) {
-					if (CollisionHandling(player.colliders.leftCeilCol, currentTile, &throwAway, player, throwAwayBool, false)) {
-						if (player.state.speed.y < 0)
-							player.state.position.y = currentTile->GetPosition().y + currentTile->GetHeight(player.state.position, 2) + player.colliders.footSensorHeight;
-						hasCollided = false;
-						player.state.speed.y = std::max(player.state.speed.y, 0.f);
+
+			Vector2i currentChunkPos(Vector2f((Vector2i(player.state.position) / 16 * 16)) / Vector2f((int)chunkSizePx, chunkSizePx));
+
+
+			if (player.state.pushState == Direction::Right) {
+				if (player.colliders.rightPushTile->tile) {
+					if (player.colliders.pushCol.top + 1 < player.colliders.rightPushTile->GetPosition().y
+						|| player.colliders.pushCol.top + 1 > player.colliders.rightPushTile->GetPosition().y + TILE_HEIGHT
+						|| player.state.speed.x < 0) {
+						player.state.pushState = Direction::None;
+						player.colliders.rightPushTile = nullptr;
 					}
 				}
+				else if (scriptpushcontrol && player.state.speed.x < 0)
+					player.state.pushState = Direction::None;
+				else if (!scriptpushcontrol)
+					player.state.pushState = Direction::None;
 			}
-			for (auto currentTile : GetTilesWithinRange(player.colliders.rightCeilCol, player.state.layer)) {
-				if (currentTile->CheckCollision(player.colliders.rightCeilCol, player.state)) {
-					if (CollisionHandling(player.colliders.rightCeilCol, currentTile, &throwAway, player, throwAwayBool, false)) {
-						if (player.state.speed.y < 0)
-							player.state.position.y = currentTile->GetPosition().y + currentTile->GetHeight(player.state.position, 2) + player.colliders.footSensorHeight;
-						hasCollided = false;
-						player.state.speed.y = std::max(player.state.speed.y, 0.f);
+			else if (player.state.pushState == Direction::Left) {
+				if (player.colliders.leftPushTile->tile) {
+					if (player.colliders.pushCol.top + 1 < player.colliders.leftPushTile->GetPosition().y
+						|| player.colliders.pushCol.top + 1 > player.colliders.leftPushTile->GetPosition().y + TILE_HEIGHT
+						|| player.state.speed.x > 0) {
+						player.state.pushState = Direction::None;
+						player.colliders.leftPushTile = nullptr;
 					}
 				}
+				else if (scriptpushcontrol && player.state.speed.x > 0)
+					player.state.pushState = Direction::None;
+				else if (!scriptpushcontrol)
+					player.state.pushState = Direction::None;
 			}
 
-		}
+		
+
+
+			WorldTile* throwAway = nullptr; //Throwaway variable for CollisionHandling() to write to
+			bool throwAwayBool = false;
+			if (player.state.groundMode == GROUNDMODE_FLOOR) {
+				for (auto currentTile : GetTilesWithinRange(player.colliders.leftCeilCol, player.state.layer)) {
+					if (currentTile->CheckCollision(player.colliders.leftCeilCol, player.state)) {
+						if (CollisionHandling(player.colliders.leftCeilCol, currentTile, &throwAway, player, throwAwayBool, CollisionHandleMode::Ceil)) {
+							if (player.state.speed.y < 0)
+								player.state.position.y = currentTile->GetPosition().y + currentTile->GetHeight(player.state.position, 2) + player.colliders.footSensorHeight;
+							hasCollided = false;
+							player.state.speed.y = std::max(player.state.speed.y, 0.f);
+						}
+					}
+				}
+				for (auto currentTile : GetTilesWithinRange(player.colliders.rightCeilCol, player.state.layer)) {
+					if (currentTile->CheckCollision(player.colliders.rightCeilCol, player.state)) {
+						if (CollisionHandling(player.colliders.rightCeilCol, currentTile, &throwAway, player, throwAwayBool, CollisionHandleMode::Ceil)) {
+							if (player.state.speed.y < 0)
+								player.state.position.y = currentTile->GetPosition().y + currentTile->GetHeight(player.state.position, 2) + player.colliders.footSensorHeight;
+							hasCollided = false;
+							player.state.speed.y = std::max(player.state.speed.y, 0.f);
+						}
+					}
+				}
+
+			}
 
 
 
-		if (player.colliders.leftFootTile && player.colliders.rightFootTile) {
+			if (player.colliders.leftFootTile && player.colliders.rightFootTile) {
 
-			//Get floor heights
-			float tempHeightD = player.colliders.leftFootTile->GetHeight(Vector2f(player.colliders.leftFootCol.left, player.colliders.leftFootCol.top), 0);
-			float tempHeightR = player.colliders.leftFootTile->GetHeight(Vector2f(player.colliders.leftFootCol.left, player.colliders.leftFootCol.top), 3);
-			float tempHeightU = player.colliders.leftFootTile->GetHeight(Vector2f(player.colliders.leftFootCol.left, player.colliders.leftFootCol.top), 2);
-			float tempHeightL = player.colliders.leftFootTile->GetHeight(Vector2f(player.colliders.leftFootCol.left, player.colliders.leftFootCol.top), 1);
-			QuadFootSensorData& fD = player.colliders.footData;
-			fD.down.leftFootHeight = player.colliders.leftFootTile->GetPosition().y + 16 - tempHeightD;
-			fD.right.leftFootHeight = player.colliders.leftFootTile->GetPosition().x + 16 - tempHeightR;
-			fD.up.leftFootHeight = player.colliders.leftFootTile->GetPosition().y + tempHeightU;
-			fD.left.leftFootHeight = player.colliders.leftFootTile->GetPosition().x + tempHeightL;
+				//Get floor heights
+				float tempHeightD = player.colliders.leftFootTile->GetHeight(Vector2f(player.colliders.leftFootCol.left, player.colliders.leftFootCol.top), 0);
+				float tempHeightR = player.colliders.leftFootTile->GetHeight(Vector2f(player.colliders.leftFootCol.left, player.colliders.leftFootCol.top), 3);
+				float tempHeightU = player.colliders.leftFootTile->GetHeight(Vector2f(player.colliders.leftFootCol.left, player.colliders.leftFootCol.top), 2);
+				float tempHeightL = player.colliders.leftFootTile->GetHeight(Vector2f(player.colliders.leftFootCol.left, player.colliders.leftFootCol.top), 1);
+				QuadFootSensorData& fD = player.colliders.footData;
+				fD.down.leftFootHeight = player.colliders.leftFootTile->GetPosition().y + 16 - tempHeightD;
+				fD.right.leftFootHeight = player.colliders.leftFootTile->GetPosition().x + 16 - tempHeightR;
+				fD.up.leftFootHeight = player.colliders.leftFootTile->GetPosition().y + tempHeightU;
+				fD.left.leftFootHeight = player.colliders.leftFootTile->GetPosition().x + tempHeightL;
 
-			tempHeightD = player.colliders.rightFootTile->GetHeight(Vector2f(player.colliders.rightFootCol.left, player.colliders.rightFootCol.top), 0);
-			tempHeightR = player.colliders.rightFootTile->GetHeight(Vector2f(player.colliders.rightFootCol.left, player.colliders.rightFootCol.top), 3);
-			tempHeightU = player.colliders.rightFootTile->GetHeight(Vector2f(player.colliders.rightFootCol.left, player.colliders.rightFootCol.top), 2);
-			tempHeightL = player.colliders.rightFootTile->GetHeight(Vector2f(player.colliders.rightFootCol.left, player.colliders.rightFootCol.top), 1);
-			fD.down.rightFootHeight = player.colliders.rightFootTile->GetPosition().y + 16 - tempHeightD;
-			fD.right.rightFootHeight = player.colliders.rightFootTile->GetPosition().x + 16 - tempHeightR;
-			fD.up.rightFootHeight = player.colliders.rightFootTile->GetPosition().y + tempHeightU;
-			fD.left.rightFootHeight = player.colliders.rightFootTile->GetPosition().x + tempHeightL;
-
-
+				tempHeightD = player.colliders.rightFootTile->GetHeight(Vector2f(player.colliders.rightFootCol.left, player.colliders.rightFootCol.top), 0);
+				tempHeightR = player.colliders.rightFootTile->GetHeight(Vector2f(player.colliders.rightFootCol.left, player.colliders.rightFootCol.top), 3);
+				tempHeightU = player.colliders.rightFootTile->GetHeight(Vector2f(player.colliders.rightFootCol.left, player.colliders.rightFootCol.top), 2);
+				tempHeightL = player.colliders.rightFootTile->GetHeight(Vector2f(player.colliders.rightFootCol.left, player.colliders.rightFootCol.top), 1);
+				fD.down.rightFootHeight = player.colliders.rightFootTile->GetPosition().y + 16 - tempHeightD;
+				fD.right.rightFootHeight = player.colliders.rightFootTile->GetPosition().x + 16 - tempHeightR;
+				fD.up.rightFootHeight = player.colliders.rightFootTile->GetPosition().y + tempHeightU;
+				fD.left.rightFootHeight = player.colliders.rightFootTile->GetPosition().x + tempHeightL;
 
 
-			hasCollided = true;
-			if (player.state.groundMode == GROUNDMODE_FLOOR && fD.down.rightFootHeight <= fD.down.leftFootHeight ||
-				player.state.groundMode == GROUNDMODE_RIGHTWALL && fD.right.rightFootHeight <= fD.right.leftFootHeight ||
-				player.state.groundMode == GROUNDMODE_CEILING && fD.up.rightFootHeight >= fD.up.leftFootHeight ||
-				player.state.groundMode == GROUNDMODE_LEFTWALL && fD.left.rightFootHeight >= fD.left.leftFootHeight)
-				player.state.angle = player.colliders.rightFootTile->tile->GetAngle(player.state.groundMode);
-			else
+
+
+				hasCollided = true;
+				if (player.state.groundMode == GROUNDMODE_FLOOR && fD.down.rightFootHeight <= fD.down.leftFootHeight ||
+					player.state.groundMode == GROUNDMODE_RIGHTWALL && fD.right.rightFootHeight <= fD.right.leftFootHeight ||
+					player.state.groundMode == GROUNDMODE_CEILING && fD.up.rightFootHeight >= fD.up.leftFootHeight ||
+					player.state.groundMode == GROUNDMODE_LEFTWALL && fD.left.rightFootHeight >= fD.left.leftFootHeight)
+					player.state.angle = player.colliders.rightFootTile->tile->GetAngle(player.state.groundMode);
+				else
+					player.state.angle = player.colliders.leftFootTile->tile->GetAngle(player.state.groundMode);
+
+				float downAngDebug = player.colliders.leftFootTile->tile->GetAngle(0);
+				//float rightAngDebug = player.colliders.leftFootTile->tile->GetAngle(3);
+
+				if (player.state.groundMode == GROUNDMODE_FLOOR)
+					player.state.position = Vector2f(player.state.position.x, std::min(fD.down.leftFootHeight, fD.down.rightFootHeight) - player.state.offsetFromGround);
+				else if (player.state.groundMode == GROUNDMODE_RIGHTWALL)
+					player.state.position = Vector2f(std::min(fD.right.leftFootHeight, fD.right.rightFootHeight) - player.state.offsetFromGround, player.state.position.y);
+				else if (player.state.groundMode == GROUNDMODE_CEILING)
+					player.state.position = Vector2f(player.state.position.x, std::max(fD.up.leftFootHeight, fD.up.rightFootHeight) + player.state.offsetFromGround);
+				else if (player.state.groundMode == GROUNDMODE_LEFTWALL)
+					player.state.position = Vector2f(std::max(fD.left.leftFootHeight, fD.left.rightFootHeight) + player.state.offsetFromGround, player.state.position.y);
+			}
+			else if (player.colliders.leftFootTile) {
+				float tempHeightD = player.colliders.leftFootTile->GetHeight(Vector2f(player.colliders.leftFootCol.left, player.colliders.leftFootCol.top), 0);
+				float tempHeightR = player.colliders.leftFootTile->GetHeight(Vector2f(player.colliders.leftFootCol.left, player.colliders.leftFootCol.top), 3);
+				float tempHeightU = player.colliders.leftFootTile->GetHeight(Vector2f(player.colliders.leftFootCol.left, player.colliders.leftFootCol.top), 2);
+				float tempHeightL = player.colliders.leftFootTile->GetHeight(Vector2f(player.colliders.leftFootCol.left, player.colliders.leftFootCol.top), 1);
+				QuadFootSensorData& fD = player.colliders.footData;
+				fD.down.leftFootHeight = player.colliders.leftFootTile->GetPosition().y + 16 - tempHeightD;
+				fD.right.leftFootHeight = player.colliders.leftFootTile->GetPosition().x + 16 - tempHeightR;
+				fD.up.leftFootHeight = player.colliders.leftFootTile->GetPosition().y + tempHeightU;
+				fD.left.leftFootHeight = player.colliders.leftFootTile->GetPosition().x + tempHeightL;
+				hasCollided = true;
+
 				player.state.angle = player.colliders.leftFootTile->tile->GetAngle(player.state.groundMode);
 
-			float downAngDebug = player.colliders.leftFootTile->tile->GetAngle(0);
-			//float rightAngDebug = player.colliders.leftFootTile->tile->GetAngle(3);
+				if (player.state.groundMode == GROUNDMODE_FLOOR)
+					player.state.position = Vector2f(player.state.position.x, fD.down.leftFootHeight - player.state.offsetFromGround);
 
-			if (player.state.groundMode == GROUNDMODE_FLOOR)
-				player.state.position = Vector2f(player.state.position.x, std::min(fD.down.leftFootHeight, fD.down.rightFootHeight) - player.state.offsetFromGround);
-			else if (player.state.groundMode == GROUNDMODE_RIGHTWALL)
-				player.state.position = Vector2f(std::min(fD.right.leftFootHeight, fD.right.rightFootHeight) - player.state.offsetFromGround, player.state.position.y);
-			else if (player.state.groundMode == GROUNDMODE_CEILING)
-				player.state.position = Vector2f(player.state.position.x, std::max(fD.up.leftFootHeight, fD.up.rightFootHeight) + player.state.offsetFromGround);
-			else if (player.state.groundMode == GROUNDMODE_LEFTWALL)
-				player.state.position = Vector2f(std::max(fD.left.leftFootHeight, fD.left.rightFootHeight) + player.state.offsetFromGround, player.state.position.y);
-		}
-		else if (player.colliders.leftFootTile) {
-			float tempHeightD = player.colliders.leftFootTile->GetHeight(Vector2f(player.colliders.leftFootCol.left, player.colliders.leftFootCol.top), 0);
-			float tempHeightR = player.colliders.leftFootTile->GetHeight(Vector2f(player.colliders.leftFootCol.left, player.colliders.leftFootCol.top), 3);
-			float tempHeightU = player.colliders.leftFootTile->GetHeight(Vector2f(player.colliders.leftFootCol.left, player.colliders.leftFootCol.top), 2);
-			float tempHeightL = player.colliders.leftFootTile->GetHeight(Vector2f(player.colliders.leftFootCol.left, player.colliders.leftFootCol.top), 1);
-			QuadFootSensorData& fD = player.colliders.footData;
-			fD.down.leftFootHeight = player.colliders.leftFootTile->GetPosition().y + 16 - tempHeightD;
-			fD.right.leftFootHeight = player.colliders.leftFootTile->GetPosition().x + 16 - tempHeightR;
-			fD.up.leftFootHeight = player.colliders.leftFootTile->GetPosition().y + tempHeightU;
-			fD.left.leftFootHeight = player.colliders.leftFootTile->GetPosition().x + tempHeightL;
-			hasCollided = true;
-
-			player.state.angle = player.colliders.leftFootTile->tile->GetAngle(player.state.groundMode);
-
-			if (player.state.groundMode == GROUNDMODE_FLOOR)
-				player.state.position = Vector2f(player.state.position.x, fD.down.leftFootHeight - player.state.offsetFromGround);
-
-			else if (player.state.groundMode == GROUNDMODE_RIGHTWALL) {
-				player.state.position = Vector2f(fD.right.leftFootHeight - player.state.offsetFromGround, player.state.position.y);
-				if (player.colliders.leftFootTile->tile->GetAngle(3) == 270) {
-					if (player.sprite.sheetS.getPosition().x > player.colliders.leftFootTile->GetPosition().x)
-						player.state.angle = 0;
+				else if (player.state.groundMode == GROUNDMODE_RIGHTWALL) {
+					player.state.position = Vector2f(fD.right.leftFootHeight - player.state.offsetFromGround, player.state.position.y);
+					if (player.colliders.leftFootTile->tile->GetAngle(3) == 270) {
+						if (player.sprite.sheetS.getPosition().x > player.colliders.leftFootTile->GetPosition().x)
+							player.state.angle = 0;
+					}
 				}
-			}
-			else if (player.state.groundMode == GROUNDMODE_CEILING)
-				player.state.position = Vector2f(player.state.position.x, fD.up.leftFootHeight + player.state.offsetFromGround);
-			else if (player.state.groundMode == GROUNDMODE_LEFTWALL)
-				player.state.position = Vector2f(fD.left.leftFootHeight + player.state.offsetFromGround, player.state.position.y);
+				else if (player.state.groundMode == GROUNDMODE_CEILING)
+					player.state.position = Vector2f(player.state.position.x, fD.up.leftFootHeight + player.state.offsetFromGround);
+				else if (player.state.groundMode == GROUNDMODE_LEFTWALL)
+					player.state.position = Vector2f(fD.left.leftFootHeight + player.state.offsetFromGround, player.state.position.y);
 
-
-		}
-		else if (player.colliders.rightFootTile) {
-			float tempHeightD = player.colliders.rightFootTile->GetHeight(Vector2f(player.colliders.rightFootCol.left, player.colliders.rightFootCol.top), 0);
-			float tempHeightR = player.colliders.rightFootTile->GetHeight(Vector2f(player.colliders.rightFootCol.left, player.colliders.rightFootCol.top), 3);
-			float tempHeightU = player.colliders.rightFootTile->GetHeight(Vector2f(player.colliders.rightFootCol.left, player.colliders.rightFootCol.top), 2);
-			float tempHeightL = player.colliders.rightFootTile->GetHeight(Vector2f(player.colliders.rightFootCol.left, player.colliders.rightFootCol.top), 1);
-			QuadFootSensorData& fD = player.colliders.footData;
-			fD.down.rightFootHeight = player.colliders.rightFootTile->GetPosition().y + 16 - tempHeightD;
-			fD.right.rightFootHeight = player.colliders.rightFootTile->GetPosition().x + 16 - tempHeightR;
-			fD.up.rightFootHeight = player.colliders.rightFootTile->GetPosition().y + tempHeightU;
-			fD.left.rightFootHeight = player.colliders.rightFootTile->GetPosition().x + tempHeightL;
-			hasCollided = true;
-
-			player.state.angle = player.colliders.rightFootTile->tile->GetAngle(player.state.groundMode);
-			if (player.state.groundMode == GROUNDMODE_FLOOR)
-				player.state.position = Vector2f(player.state.position.x, fD.down.rightFootHeight - player.state.offsetFromGround);
-			else if (player.state.groundMode == GROUNDMODE_RIGHTWALL) {
-				player.state.position = Vector2f(fD.right.rightFootHeight - player.state.offsetFromGround, player.state.position.y);
-				if (player.colliders.rightFootTile->tile->GetAngle(3) == 270) {
-					if (player.sprite.sheetS.getPosition().x > player.colliders.rightFootTile->GetPosition().x)
-						player.state.angle = 0;
-				}
 
 			}
-			else if (player.state.groundMode == GROUNDMODE_CEILING)
-				player.state.position = Vector2f(player.state.position.x, fD.up.rightFootHeight + player.state.offsetFromGround);
-			else if (player.state.groundMode == GROUNDMODE_LEFTWALL)
-				player.state.position = Vector2f(fD.left.rightFootHeight + player.state.offsetFromGround, player.state.position.y);
-		}
-		else {
-			player.state.airborne = true;
-			player.state.angle = LerpDegrees(player.state.angle, 360, 0.8f);
-		}
+			else if (player.colliders.rightFootTile) {
+				float tempHeightD = player.colliders.rightFootTile->GetHeight(Vector2f(player.colliders.rightFootCol.left, player.colliders.rightFootCol.top), 0);
+				float tempHeightR = player.colliders.rightFootTile->GetHeight(Vector2f(player.colliders.rightFootCol.left, player.colliders.rightFootCol.top), 3);
+				float tempHeightU = player.colliders.rightFootTile->GetHeight(Vector2f(player.colliders.rightFootCol.left, player.colliders.rightFootCol.top), 2);
+				float tempHeightL = player.colliders.rightFootTile->GetHeight(Vector2f(player.colliders.rightFootCol.left, player.colliders.rightFootCol.top), 1);
+				QuadFootSensorData& fD = player.colliders.footData;
+				fD.down.rightFootHeight = player.colliders.rightFootTile->GetPosition().y + 16 - tempHeightD;
+				fD.right.rightFootHeight = player.colliders.rightFootTile->GetPosition().x + 16 - tempHeightR;
+				fD.up.rightFootHeight = player.colliders.rightFootTile->GetPosition().y + tempHeightU;
+				fD.left.rightFootHeight = player.colliders.rightFootTile->GetPosition().x + tempHeightL;
+				hasCollided = true;
 
-		for (auto currentTile : GetTilesWithinRange(player.colliders.pushCol, player.state.layer)) {
-			if (currentTile->CheckCollision(player.colliders.pushCol, player.state)) {
-				if (player.state.groundMode == GROUNDMODE_FLOOR) {
-					if (player.colliders.pushCol.top >= currentTile->GetPosition().y &&
-						player.colliders.pushCol.top <= currentTile->GetPosition().y + 16) {
+				player.state.angle = player.colliders.rightFootTile->tile->GetAngle(player.state.groundMode);
+				if (player.state.groundMode == GROUNDMODE_FLOOR)
+					player.state.position = Vector2f(player.state.position.x, fD.down.rightFootHeight - player.state.offsetFromGround);
+				else if (player.state.groundMode == GROUNDMODE_RIGHTWALL) {
+					player.state.position = Vector2f(fD.right.rightFootHeight - player.state.offsetFromGround, player.state.position.y);
+					if (player.colliders.rightFootTile->tile->GetAngle(3) == 270) {
+						if (player.sprite.sheetS.getPosition().x > player.colliders.rightFootTile->GetPosition().x)
+							player.state.angle = 0;
+					}
 
-						int localPos = player.colliders.pushCol.left + player.colliders.pushCol.width - currentTile->GetPosition().x;
-						localPos = bound(0, localPos, 15);
+				}
+				else if (player.state.groundMode == GROUNDMODE_CEILING)
+					player.state.position = Vector2f(player.state.position.x, fD.up.rightFootHeight + player.state.offsetFromGround);
+				else if (player.state.groundMode == GROUNDMODE_LEFTWALL)
+					player.state.position = Vector2f(fD.left.rightFootHeight + player.state.offsetFromGround, player.state.position.y);
+			}
+			else {
+				player.state.airborne = true;
+				player.state.angle = LerpDegrees(player.state.angle, 360, 0.8f);
+			}
 
-						if (player.colliders.pushCol.left < currentTile->GetPosition().x && player.state.speed.x >= 0) { //Pushing right
+			for (auto currentTile : GetTilesWithinRange(player.colliders.pushCol, player.state.layer)) {
+				if (currentTile->CheckCollision(player.colliders.pushCol, player.state)) {
+					if (player.state.groundMode == GROUNDMODE_FLOOR) {
+						if (player.colliders.pushCol.top >= currentTile->GetPosition().y &&
+							player.colliders.pushCol.top <= currentTile->GetPosition().y + 16) {
 
-							if (currentTile->tile &&
-								currentTile->GetPosition().y + 16 - currentTile->tile->GetHeightArray(0)->at(localPos) <= player.colliders.pushCol.top &&
-								currentTile->GetPosition().y + currentTile->tile->GetHeightArray(2)->at(localPos) > player.colliders.pushCol.top) {
-								player.state.pushState = Direction::Right;
-								player.state.speed.x = std::min(player.state.speed.x, 0.0f);
-								player.state.groundSpeed = std::min(player.state.groundSpeed, 0.0);
-								player.state.position.x = currentTile->GetPosition().x - 10;
-								player.colliders.rightPushTile = currentTile;
+							int localPos = player.colliders.pushCol.left + player.colliders.pushCol.width - currentTile->GetPosition().x;
+							localPos = bound(0, localPos, 15);
 
+							if (player.colliders.pushCol.left < currentTile->GetPosition().x && player.state.speed.x >= 0) { //Pushing right
+
+								if (currentTile->tile &&
+									currentTile->GetPosition().y + 16 - currentTile->tile->GetHeightArray(0)->at(localPos) <= player.colliders.pushCol.top &&
+									currentTile->GetPosition().y + currentTile->tile->GetHeightArray(2)->at(localPos) > player.colliders.pushCol.top) {
+									player.state.pushState = Direction::Right;
+									player.state.speed.x = std::min(player.state.speed.x, 0.0f);
+									player.state.groundSpeed = std::min(player.state.groundSpeed, 0.0);
+									player.state.position.x = currentTile->GetPosition().x - 10;
+									player.colliders.rightPushTile = currentTile;
+
+								}
 							}
-						}
-						else if (player.colliders.pushCol.left > currentTile->GetPosition().x && player.state.speed.x <= 0) { //Pushing left
-							if (currentTile->tile &&
-								currentTile->GetPosition().y + 16 - currentTile->tile->GetHeightArray(0)->at(localPos) <= player.colliders.pushCol.top &&
-								currentTile->GetPosition().y + currentTile->tile->GetHeightArray(2)->at(localPos) > player.colliders.pushCol.top) {
-								player.state.pushState = Direction::Left;
-								player.state.speed.x = std::max(player.state.speed.x, 0.0f);
-								player.state.groundSpeed = std::max(player.state.groundSpeed, 0.0);
-								player.state.position.x = currentTile->GetPosition().x + TILE_HEIGHT + 10;
-								player.colliders.leftPushTile = currentTile;
+							else if (player.colliders.pushCol.left > currentTile->GetPosition().x && player.state.speed.x <= 0) { //Pushing left
+								if (currentTile->tile &&
+									currentTile->GetPosition().y + 16 - currentTile->tile->GetHeightArray(0)->at(localPos) <= player.colliders.pushCol.top &&
+									currentTile->GetPosition().y + currentTile->tile->GetHeightArray(2)->at(localPos) > player.colliders.pushCol.top) {
+									player.state.pushState = Direction::Left;
+									player.state.speed.x = std::max(player.state.speed.x, 0.0f);
+									player.state.groundSpeed = std::max(player.state.groundSpeed, 0.0);
+									player.state.position.x = currentTile->GetPosition().x + TILE_HEIGHT + 10;
+									player.colliders.leftPushTile = currentTile;
 
+								}
 							}
 						}
 					}
+					//TODO: Implement for other groundmodes
 				}
 			}
-		}
 
-
-
-		if (hasCollided && player.state.airborne) {
-
-			
-			if (player.state.dropdashing) {
-				//player.state.groundSpeed = std::max(std::min((std::abs(player.state.groundSpeed)), 16.), 4.) * player.state.lastDirection;
-				player.state.groundSpeed = std::abs(player.state.speed.y) * player.state.lastDirection;
-				player.state.rolling = true;
-				player.state.dropdashing = false;
-			} else {
-				player.state.rolling = false;
-				player.state.groundSpeed = CalculateGSPD(player.state.angle, player.state);
+			for (auto& l : currentRoom.objects) {
+				for (auto& obj : l) {
+					obj.Update(dt, player);
+				}
 			}
+
+			if (hasCollided && player.state.airborne) {
+
+				if (player.state.knockback) {
+					player.state.knockback = false;
+					player.state.speed.x = 0;
+
+					player.physics.grv = 0.21875f; //Reset gravity
+				}
+
+
+				if (player.state.dropdashing) {
+					//player.state.groundSpeed = std::max(std::min((std::abs(player.state.groundSpeed)), 16.), 4.) * player.state.lastDirection;
+					player.state.groundSpeed = std::abs(player.state.speed.y) * player.state.lastDirection;
+					player.state.rolling = true;
+					player.state.dropdashing = false;
+				}
+				else {
+					player.state.rolling = false;
+					player.state.groundSpeed = CalculateGSPD(player.state.angle, player.state);
+				}
+			}
+
+			if (hasCollided) {
+				player.state.jumping = false;
+				player.state.airborne = false;
+			}
+			else
+				player.state.airborne = true;
+
+			if (player.state.airborne) {
+				player.colliders.leftFootTile = nullptr;
+				player.colliders.rightFootTile = nullptr;
+
+			}
+
 		}
 
-		if (hasCollided) {
-			player.state.jumping = false;
-			player.state.airborne = false;
-		}
-		else
-			player.state.airborne = true;
-
-		if (player.state.airborne) {
-			player.colliders.leftFootTile = nullptr;
-			player.colliders.rightFootTile = nullptr;
-			//player.state.angle = 0;
-		}
 
 
 	}
-
+	if (player.state.invincFrames > 0 && !player.state.knockback)
+		player.state.invincFrames--;
 
 	//End of sub-frame updates
 	if ((!hasAcc || player.state.rolling) && !player.state.airborne) {
@@ -1114,17 +1161,12 @@ void FixedUpdate(GlobalGameState & gamestate, Player & player, sf::Time dt) {
 		else
 			player.sprite.sheetS.setRotation(LerpDegrees(player.state.angle, player.sprite.sheetS.getRotation(), 0.8f));
 
-		/*if (debugInfoLevel >= DebugInfoLevels::MAX)
-		player.sprite.sheetS.setRotation(player.state.angle);*/
 
 	}
 	else {
 		player.sprite.sheetS.setRotation(0);
 	}
 	//Camera
-
-
-	//	gameWindow.setView(View(player.state.position - Vector2f(0, player.sprite.sheetS.getOrigin().y / 2), Vector2f(640, 360))); //Non-dynamic camera
 
 	if (player.state.position.x > camera.position.x) {
 		camera.position.x += std::min(player.state.position.x - camera.position.x, 16.f);
@@ -1268,7 +1310,7 @@ void Draw(RenderWindow& window, Player& player) {
 		player.sprite.sheetS.setPosition(player.state.position + Vector2f(0, -1));
 	else
 		player.sprite.sheetS.setPosition(player.state.position + Vector2f(-1, 0));
-	//player.sprite.sheetS.setOrigin(0.0f, 0.0f);
+
 
 	//Reset animation frame to 0 if animation changed
 	if (player.sprite.prevYIndex != player.sprite.yIndex) {
@@ -1279,7 +1321,7 @@ void Draw(RenderWindow& window, Player& player) {
 
 
 	player.state.groundMode = std::fmod(round(player.state.angle / 90), 4);
-	//if (airborne) groundMode = 0;
+
 
 	if ((player.state.pushState > 1 && player.state.speed.x < 0) || player.state.pushState < 1 && player.state.speed.x > 0) player.state.pushState = Direction::None; //Small check after scripts update to fix a visual bug
 
@@ -1294,7 +1336,13 @@ void Draw(RenderWindow& window, Player& player) {
 		player.sprite.xIndex++;
 		player.sprite.animationtimer = 0;
 	}
-	if (player.state.jumping || player.state.rolling) {
+	if (player.state.knockback) {
+		if (player.sprite.xIndex > 1)
+			player.sprite.xIndex = 0;
+		player.sprite.UpdateRect(player.sprite.xIndex, 7);
+		player.sprite.frameduration = 10;
+	}
+	else if (player.state.jumping || player.state.rolling) {
 		if (player.sprite.xIndex > 4)
 			player.sprite.xIndex = 0;
 		player.sprite.UpdateRect(player.sprite.xIndex, 2);
@@ -1317,7 +1365,7 @@ void Draw(RenderWindow& window, Player& player) {
 				
 		}
 	}
-	else {
+	else  {
 		if (player.state.groundSpeed != 0 && player.state.pushState == 0) {
 			if (std::abs(player.state.groundSpeed) < 5) {
 				if (player.sprite.xIndex > 7)
@@ -1497,7 +1545,9 @@ void Draw(RenderWindow& window, Player& player) {
 		//gameWindow.draw(chunkOutline);
 	}
 
-	gameWindow.draw(player.sprite.sheetS);
+	if (player.state.knockback || player.state.invincFrames == 0 || globalTimer % 2 == 0)
+		gameWindow.draw(player.sprite.sheetS);
+	
 	Vector2i currentChunkPos(camera.position / Vector2f(chunkSizePx, chunkSizePx));
 
 

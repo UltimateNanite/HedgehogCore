@@ -16,7 +16,7 @@ private:
 public:
 	boost::ptr_vector<HCComponent>* GetComponentsPtr();
 	const boost::ptr_vector<HCComponent>*  GetConstComponentsPtr() const;
-
+	
 	float activradius = 500;
 	bool colliding;
 	bool layerIndependent;
@@ -65,6 +65,21 @@ public:
 			}
 		}
 		return false;
+	}
+
+	template<typename T>
+	size_t GetComponentCount() {
+		size_t result = 0;
+		for (auto& component : components) {
+			if (dynamic_cast<T*>(&component)) {
+				result++;
+			}
+		}
+		return result;
+	}
+
+	bool operator==(const HCObject& rhs) {
+		return (this == &rhs);
 	}
 };
 

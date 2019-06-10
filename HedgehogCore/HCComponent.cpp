@@ -4,6 +4,19 @@
 #include "Structs.h"
 #include <imgui.h>
 
+//Python doesn't like the _DEBUG symbol.
+#ifdef _DEBUG
+#undef _DEBUG
+#include <Python.h>
+#define _DEBUG
+#else
+#include <Python.h>
+#endif
+
+#ifdef HC_EDITOR
+#include <imgui_stl.h>
+#endif
+
 #include "Room.h"
 HCComponent::~HCComponent()
 {
@@ -105,7 +118,6 @@ HCComponent* new_clone(HCComponent const& other) {
 
 void SpriteRenderer::Update(sf::Time dt)
 {
-	
 	if (!txt_valid) {
 		
 		//Check if the texture is loaded
@@ -117,6 +129,11 @@ void SpriteRenderer::Update(sf::Time dt)
 			if (parent->GetSize() == sf::Vector2f(0.f, 0.f))
 				parent->SetSize(sf::Vector2f(txt.getSize()));
 		}
+	}
+
+	if (wrapMode == WrapMode::Crop) {
+		textureRect.width = parent->GetSize().x;
+		textureRect.height = parent->GetSize().y;
 	}
 }
 
@@ -174,6 +191,7 @@ void SpriteRenderer::draw(sf::RenderTarget& target, sf::RenderStates states) con
 		spr.setScale(scale);
 	}
 	else if (wrapMode == WrapMode::Crop) {
+		
 		spr.setTextureRect(textureRect);
 		spr.setScale(1.f, 1.f);
 	}
@@ -257,10 +275,7 @@ HCComponent* Renderer3D::factory_create(std::ifstream& ifs)
 }
 
 
-std::ofstream& SpriteRenderer::filestream_out(std::ofstream& ofs) const
-{
-	return ofs;
-}
+
 std::ifstream& SpriteRenderer::filestream_in(std::ifstream& ifs)
 {
 	return ifs;
@@ -271,10 +286,58 @@ HCComponent* SpriteRenderer::create(Room* room, HCObject* parent)
 	return new SpriteRenderer(parent, room);
 }
 
+std::ofstream& SpriteRenderer::filestream_out(std::ofstream& ofs) const
+{
+	ofs << texturename;
+	ofs << " | ";
+	switch (wrapMode) {
+	case WrapMode::Stretch:
+		ofs << 1;
+		break;
+	case WrapMode::Crop:
+		ofs << 2;
+		ofs << ',' << textureRect.left << ',' << textureRect.top;
+		break;
+	case WrapMode::CropRepeat:
+		ofs << 3;
+		ofs << ',' << textureRect.left << ',' << textureRect.top;
+		break;
+	}
+	return ofs;
+}
+
 HCComponent* SpriteRenderer::factory_create(std::ifstream& ifs)
 {
-	//TODO: Implement
-	return nullptr;
+	SpriteRenderer*result = new SpriteRenderer(nullptr, nullptr);
+
+	std::string txtname;
+	char in = '\0';
+	for (int i = 0; i < 1000; i++) {
+		ifs >> in; 
+		if (in == '|') 
+			break;
+		txtname += in;
+	}
+	result->texturename = txtname;
+	int mode = 0;
+	ifs >> mode;
+	if (mode == 0)
+		throw std::exception("Failed loading SpriteRenderer");
+
+	switch (mode) {
+	case 1:
+		result->wrapMode = WrapMode::Stretch;
+		break;
+	case 2:
+		result->wrapMode = WrapMode::Crop; 
+		ifs >> in >> result->textureRect.left >> in >> result->textureRect.top;
+		break;
+	case 3:
+		result->wrapMode = WrapMode::CropRepeat;
+		ifs >> in >> result->textureRect.left >> in >> result->textureRect.top;
+		break;
+	}
+	return result;
 }
 
 
@@ -326,7 +389,7 @@ void CollisionHazard::Update(sf::Time dt, Player& player)
 		player.colliders.rightFootCol.intersects(thisCol) ||
 		player.colliders.pushCol.intersects(thisCol)) {
 
-		player.hurt(room);
+		player.hurt(room, parent);
 	}
 }
 
@@ -356,3 +419,71 @@ HCComponent* CollisionHazard::factory_create(std::ifstream& ifs)
 {
 	return new CollisionHazard(nullptr, nullptr);
 }
+
+void PythonScript::Update(sf::Time dt)
+{
+}
+
+void PythonScript::Update(sf::Time dt, Player& player)
+{
+}
+
+void PythonScript::im_draw()
+{
+#ifdef HC_EDITOR
+	if (running) {
+		if (ImGui::Button("Pause"))
+			running = false;
+	}
+	else {
+		if (ImGui::Button("Play"))
+			running = true;
+	}
+	if (ImGui::InputTextMultiline("Script",&scripttext)) {
+
+	}
+#endif
+}
+
+void PythonScript::draw(sf::RenderTarget& target, sf::RenderStates states) const
+{
+}
+
+std::ofstream& PythonScript::filestream_out(std::ofstream& ofs) const
+{
+	ofs << filename;
+	return ofs;
+}
+
+std::ifstream& PythonScript::filestream_in(std::ifstream& ifs)
+{
+	char in = '\0';
+	while (in != ',') {
+		ifs >> in;
+		if (in == ',') break;
+		filename += in;
+	}
+	this->filename = filename;
+	return ifs;
+}
+
+HCComponent* PythonScript::create(Room* room, HCObject* parent)
+{
+	return new PythonScript(parent, room);
+}
+
+HCComponent* PythonScript::factory_create(std::ifstream& ifs)
+{
+	PythonScript* comp = new PythonScript(nullptr, nullptr);
+	std::string filename;
+	char in = '\0';
+
+	while (in != ',') {
+		ifs >> in;
+		if (in == ',') break;
+		filename += in;
+	}
+	comp->filename = filename;
+	return nullptr;
+}
+

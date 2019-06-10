@@ -44,7 +44,7 @@ struct PlayerState {
 	double groundSpeed;
 	float angle;
 	int feetWidth = 9;
-	int groundMode;
+	uint8_t groundMode;
 	int offsetFromGround = 16;
 	int horizontalLockTimer;
 	bool airborne;
@@ -54,6 +54,9 @@ struct PlayerState {
 	bool spindashing;
 	bool dropdashing;
 	bool dead;
+	bool knockback;
+	bool hasCollided;
+	uint16_t invincFrames;
 	uint16_t rings;
 	uint8_t lives;
 	float spindashWindup;
@@ -275,7 +278,7 @@ struct PhysicsConsts {
 	float grv = 0.21875f;
 	float jmp = -6.5f - grv;
 };
-
+class HCObject;
 struct Player : boost::noncopyable {
 	PlayerColliderSet colliders;
 	PlayerState state;
@@ -288,17 +291,8 @@ struct Player : boost::noncopyable {
 		this->sprite = SpriteSheet();
 		this->physics = PhysicsConsts();
 	}
-
-	void hurt(Room *room) {
-		if (state.rings == 0) {
-			state.dead = true;
-		}
-		else {
-			uint16_t rings = state.rings;
-			state.rings = 0;
-			//TODO: Rings spawning
-		}
-	}
+	void kill();
+	void hurt(Room* room, HCObject* col);
 };
 
 struct Camera {

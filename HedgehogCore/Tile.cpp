@@ -92,7 +92,7 @@ float Tile::GetHeight(float index, int groundMode, bool smooth) {
 	index = std::max(index, 0.f);
 	float result;
 	if (smooth) {
-		int fraction = index - std::floor(index);
+		float fraction = index - std::floor(index);
 		if (groundMode == 0)
 			result = Lerp(heightArrays.down[std::floor(index)], heightArrays.down[std::ceil(index)], fraction);
 		else if (groundMode == 3)

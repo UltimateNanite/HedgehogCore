@@ -8,6 +8,8 @@
 #include "Room.h"
 #include "imgui.h"
 #include "imgui-SFML.h"
+
+
 #include <stdexcept>
 #include <filesystem>
 #include "AssetSelector.h"
@@ -30,7 +32,7 @@ namespace fs = std::filesystem;
 Camera cam;
 
 HCObject* selectedObject;
-
+ParallaxLayer* selectedPL;
 
 
 int debugDrawCalls = 0;
@@ -159,6 +161,17 @@ bool runningOpenDialog = true;
 bool running = true;
 UIElement * currentFocus;
 
+std::vector<WorldTile*> selectedTiles;
+WorldTile* editingTilemapTile;
+int currentTilemapEditingIndex;
+int currentGroundMode = 0;
+
+void resetRoom() {
+	selectedObject = nullptr;
+	selectedTiles.clear();
+
+}
+
 void openRoom() {
 	std::string filepath_name = tinyfd_openFileDialog("Open room...", GetOwnFilePath().c_str(), 0, nullptr, nullptr, 0);
 	fs::path dir(filepath_name);
@@ -181,6 +194,8 @@ void openRoom() {
 		filename = filepath_name.substr(filepath_name.find_last_of('\\') + 1);
 	currentRoom.filename = filename;
 	ifs >> currentRoom;
+
+	resetRoom();
 	runningOpenDialog = false;
 	ifs.close();
 }
@@ -234,8 +249,6 @@ public:
 };
 
 int tool = Tools::Select;
-
-std::vector<WorldTile*> selectedTiles;	
 int currentLayer = 0;
 
 
@@ -305,15 +318,24 @@ bool useTool(sf::Event::MouseButtonEvent eventparams, const sf::RenderTexture& d
 	case (Tools::Select): {
 		
 		if (eventparams.button == sf::Mouse::Left) {
-			if (sf::Keyboard::isKeyPressed(sf::Keyboard::LControl)) {
-				if (&currentTile && std::find(selectedTiles.begin(), selectedTiles.end(), &currentTile) == selectedTiles.end())
-					selectedTiles.push_back(&currentTile);
+			
+			if (selectedTiles.size() == 1 && &currentTile == selectedTiles[0]) {
+				using namespace sf;
+				currentTilemapEditingIndex = 0;
+				editingTilemapTile = &currentTile;
 			}
 			else {
-				selectedTiles.clear();
+				editingTilemapTile = nullptr;
+				if (sf::Keyboard::isKeyPressed(sf::Keyboard::LControl)) {
+					if (&currentTile && std::find(selectedTiles.begin(), selectedTiles.end(), &currentTile) == selectedTiles.end())
+						selectedTiles.push_back(&currentTile);
+				}
+				else {
+					selectedTiles.clear();
 
-				if (&currentTile)
-					selectedTiles.push_back(&currentTile);
+					if (currentTile.tile)
+						selectedTiles.push_back(&currentTile);
+				}
 			}
 		}
 
@@ -418,7 +440,8 @@ int main()
 
 	if (!running) return 0;
 	RenderWindow window(VideoMode(1280, 720), "HedgehogEditor");
-
+	//Maximize window
+	ShowWindow(window.getSystemHandle(), SW_MAXIMIZE);
 
 	gameWindow.create(window.getSize().x / 2, window.getSize().y / 2);
 
@@ -487,12 +510,6 @@ int main()
 	io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;           // Enable Docking
 	io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
 																//io.Fonts->Clear();
-	//io.Fonts->AddFontDefault();
-	//io.Fonts->AddFontFromFileTTF((GetOwnFilePath() + "/Default/Fonts/Ruda-Bold.ttf").c_str(), 12);
-	//io.Fonts->AddFontFromFileTTF((GetOwnFilePath() + "/Default/Fonts/Ruda-Bold.ttf").c_str(), 10);
-	//io.Fonts->AddFontFromFileTTF((GetOwnFilePath() + "/Default/Fonts/Ruda-Bold.ttf").c_str(), 14);
-	//io.Fonts->AddFontFromFileTTF((GetOwnFilePath() + "/Default/Fonts/Ruda-Bold.ttf").c_str(), 18);
-	//ImGui::SFML::UpdateFontTexture();
 #pragma endregion
 	ImGui::EndFrame();
 
@@ -530,39 +547,65 @@ int main()
 					}
 					if (event.type == Event::MouseWheelScrolled) {
 						std::cout << event.mouseWheelScroll.y << std::endl;
-						if (event.mouseWheelScroll.delta > 0)
+						if (event.mouseWheelScroll.delta > 0 && cam.zoomFactor > 0.25f)
 							cam.zoomFactor /= 2;
-						else if (event.mouseWheelScroll.delta < 0)
+						else if (event.mouseWheelScroll.delta < 0 && cam.zoomFactor < 8)
 							cam.zoomFactor *= 2;
 					}
 				}
 				if (!ImGui::GetIO().WantCaptureKeyboard) {
 					//Keyboard input
 					if (event.type == Event::KeyPressed) {
-						switch (event.key.code) {
-						
-						case Keyboard::Left:
-							previewOpacity = 100.f;
-							tileDrawIndex.x--;
-							break;
-						case Keyboard::Right:
-							previewOpacity = 100.f;
-							tileDrawIndex.x++;
-							break;
-						case Keyboard::Up:
-							previewOpacity = 100.f;
-							tileDrawIndex.y--;
-							break;
-						case Keyboard::Down:
-							previewOpacity = 100.f;
-							tileDrawIndex.y++;
-							break;
-						case Keyboard::Delete:
-							for (auto selectedTile : selectedTiles) {
-								selectedTile->tile = nullptr;
+						if (!editingTilemapTile) {
+							switch (event.key.code) {
+
+							case Keyboard::Left:
+								previewOpacity = 100.f;
+								tileDrawIndex.x--;
+								break;
+							case Keyboard::Right:
+								previewOpacity = 100.f;
+								tileDrawIndex.x++;
+								break;
+							case Keyboard::Up:
+								previewOpacity = 100.f;
+								tileDrawIndex.y--;
+								break;
+							case Keyboard::Down:
+								previewOpacity = 100.f;
+								tileDrawIndex.y++;
+								break;
+							case Keyboard::Delete:
+								for (auto selectedTile : selectedTiles) {
+									selectedTile->tile = nullptr;
+								}
+								selectedTiles.clear();
+								break;
 							}
-							selectedTiles.clear();
-							break;
+						}
+						else {
+							
+							if (currentTilemapEditingIndex < 0) currentTilemapEditingIndex = 0;
+							if (currentTilemapEditingIndex > 15) currentTilemapEditingIndex = 15;
+
+							auto heightMap = editingTilemapTile->tile->GetHeightArray(currentGroundMode);
+							unsigned char& currentHeightVal = heightMap->at(currentTilemapEditingIndex);
+							switch (event.key.code) {
+							case Keyboard::Left:
+								currentTilemapEditingIndex--;
+								break;
+							case Keyboard::Right:
+								currentTilemapEditingIndex++;
+								break;
+							case Keyboard::Up:
+								if (currentHeightVal <= 15)
+									currentHeightVal++;
+								break;
+							case Keyboard::Down:
+								if (currentHeightVal > 0)
+									currentHeightVal--;
+								break;
+							}
 						}
 					}
 					sf::Vector2i maxIndex = sf::Vector2i(currentRoom.textures[currentTexture].getSize()) / 16;
@@ -619,18 +662,19 @@ void update(sf::Time deltaTime, sf::RenderWindow& window) {
 	using namespace sf;
 	double deltaFactor = deltaTime.asSeconds() / (1.0 / 60.0);
 
-
-	if (Keyboard::isKeyPressed(Keyboard::A)) {
-		cam.position.x -= 10 * deltaFactor;
-	}
-	if (Keyboard::isKeyPressed(Keyboard::D)) {
-		cam.position.x += 10 * deltaFactor;
-	}
-	if (Keyboard::isKeyPressed(Keyboard::W)) {
-		cam.position.y -= 10 * deltaFactor;
-	}
-	if (Keyboard::isKeyPressed(Keyboard::S)) {
-		cam.position.y += 10 * deltaFactor;
+	if (!ImGui::GetIO().WantCaptureKeyboard) {
+		if (Keyboard::isKeyPressed(Keyboard::A)) {
+			cam.position.x -= 10 * deltaFactor * cam.zoomFactor;
+		}
+		if (Keyboard::isKeyPressed(Keyboard::D)) {
+			cam.position.x += 10 * deltaFactor * cam.zoomFactor;
+		}
+		if (Keyboard::isKeyPressed(Keyboard::W)) {
+			cam.position.y -= 10 * deltaFactor * cam.zoomFactor;
+		}
+		if (Keyboard::isKeyPressed(Keyboard::S)) {
+			cam.position.y += 10 * deltaFactor * cam.zoomFactor;
+		}
 	}
 
 	for (auto& l : currentRoom.objects) {
@@ -654,6 +698,12 @@ void update(sf::Time deltaTime, sf::RenderWindow& window) {
 		if (Mouse::isButtonPressed(Mouse::Left) && selectedObject) {
 			Vector2f mouseMov = getWorldMousePos(window) - prevMousePos;
 			selectedObject->position += mouseMov;
+		}
+	
+
+		if (Mouse::isButtonPressed(Mouse::Middle)) {
+			Vector2f mouseMov = getWorldMousePos(window) - prevMousePos;
+			cam.position -= mouseMov;
 		}
 
 		prevMousePos = getWorldMousePos(window);
@@ -780,9 +830,12 @@ void render(sf::RenderWindow & window, sf::Time deltaTime, int framesPerSecond) 
 				WorldTile* currentTile = GetTileAtGlobalIndex(Vector2i(x, y), l, &currentRoom);
 
 				bool nonempty = AddToDrawBuffer(*currentTile, drawBuffers, gameWindow);
-				if (emptychunks[x][y] == CHUNK_UNKNOWN && nonempty) {
+				
+				int cx = x / 16;
+				int cy = y / 16;
+				if (emptychunks[cx][cy] == CHUNK_UNKNOWN && nonempty) {
 					std::cout << "Set chunk to nonempty.\n";
-					emptychunks[x][y] = CHUNK_NONEMPTY;
+					emptychunks[cx][cy] = CHUNK_NONEMPTY;
 				}
 			}
 		}
@@ -812,6 +865,11 @@ void render(sf::RenderWindow & window, sf::Time deltaTime, int framesPerSecond) 
 			float y = selectedTile->chunk.y * 256 + selectedTile->inChunkPos.y * 16;
 
 			for (int i = 0; i < 16; i++) {
+				if (editingTilemapTile && i == currentTilemapEditingIndex)
+					tileDataDisplay.setFillColor(Color(100, 100, 255, 100));
+				else
+					tileDataDisplay.setFillColor(Color(0, 0, 255, 100));
+
 				Vector2f pos = Vector2f(x + i, y);
 				tileDataDisplay.setPosition(pos + Vector2f(0, 16 - selectedTile->GetHeight(pos, 0)));
 				tileDataDisplay.setSize(Vector2f(1, selectedTile->GetHeight(pos, 0)));
@@ -866,9 +924,8 @@ void render(sf::RenderWindow & window, sf::Time deltaTime, int framesPerSecond) 
 			if (previewTopLeft.y + 48 > textureSize.y)
 				previewSize.y = 32;
 
-			previewTopLeft = previewTopLeft - raw_previewTopLeft;
-			previewDisplayPos.x = Lerp(previewTopLeft.x, previewDisplayPos.x, 0.8f);
-			previewDisplayPos.y = Lerp(previewTopLeft.y, previewDisplayPos.y, 0.8f);
+			previewDisplayPos.x = previewTopLeft.x - raw_previewTopLeft.x;
+			previewDisplayPos.y = previewTopLeft.y - raw_previewTopLeft.y;
 
 			tilePlacePreview.setTextureRect(
 				IntRect(
@@ -892,13 +949,14 @@ void render(sf::RenderWindow & window, sf::Time deltaTime, int framesPerSecond) 
 	}
 	if (previewOpacity > 0)
 		previewOpacity -= 1.5 * deltaFactor;
-	
+	if (previewOpacity < 0)
+		previewOpacity = 0;
 		
 
 	//cam.position.x = std::max(cam.position.x, window.getSize().x  / (2 * cam.zoomFactor));
 	//cam.position.y = std::max(cam.position.y, window.getSize().y / (2 * cam.zoomFactor));
-	cam.position.x = std::min(cam.position.x, 256 * 64 - window.getSize().x / (2 * cam.zoomFactor));
-	cam.position.y = std::min(cam.position.y, 256 * 8 - window.getSize().y / (2 * cam.zoomFactor));
+	//cam.position.x = std::min(cam.position.x, 256 * 64 - window.getSize().x / (2 * cam.zoomFactor));
+	//cam.position.y = std::min(cam.position.y, 256 * 8 - window.getSize().y / (2 * cam.zoomFactor));
 
 	Vector2f roundedCamPos = Vector2f(Vector2i(cam.position));
 
@@ -947,6 +1005,10 @@ void render(sf::RenderWindow & window, sf::Time deltaTime, int framesPerSecond) 
 	debugString += "real window size: "		+ to_string(window.getSize().x) + ", " + to_string(window.getSize().y) + "\n";
 	debugString += "render window size: "	+ to_string(gameWindow.getSize().x) + ", " + to_string(gameWindow.getSize().y) + "\n";
 	debugString += "render view size: "		+ to_string(gameWindow.getView().getSize().x) + ", " + to_string(gameWindow.getView().getSize().y) + "\n";
+	debugString += "camera position: "		+ to_string(cam.position.x) + ", " + to_string(cam.position.y) + "\n";
+	debugString += "camera zoom: "			+ to_string(cam.zoomFactor) + "\n";
+
+
 	if (sf::Vector2f(gameWindow.getSize()) == gameWindow.getView().getSize()) {
 		debugString += "no discrepancy";
 	}
@@ -979,6 +1041,8 @@ namespace menu
 std::string GetAssetPath(std::string assetfilename) {
 	return GetOwnFilePath() + "/Assets/" + assetfilename;
 }
+
+
 
 void im_render(sf::RenderWindow& window) {
 	using namespace sf;
@@ -1116,22 +1180,64 @@ void im_render(sf::RenderWindow& window) {
 	}
 	
 	if (menu::parallaxWindow) {
-		ImGui::Begin("Parallax Layers");
+		ImGui::Begin("Parallax Layers"); // begin window
+		std::vector<std::string> names;
+		std::vector<ParallaxLayer*> pointers;
+
+		for (int i = 0; i < currentRoom.parallaxLayers.size(); i++) {
+			pointers.push_back(&currentRoom.parallaxLayers[i]);
+			std::string& texturename = currentRoom.parallaxLayers[i].texturename;
+			if (texturename == "") {
+				names.push_back("(Blank layer)");
+				continue;
+			}
+
+			names.push_back(texturename);
+
+		}
+
+		static int listbox_item_current = 1;
+		if (ImGui::ListBox("", &listbox_item_current, names)) {
+			selectedPL = pointers[listbox_item_current];
+		}
+
+
+		if (ImGui::Button("Add")) {
+			currentRoom.parallaxLayers.push_back(ParallaxLayer());
+			selectedPL = &currentRoom.parallaxLayers[currentRoom.parallaxLayers.size() - 1];
+			}
+		if (selectedPL) {
+
+			ImGui::InputFloat("X Scroll Multiplier", &selectedPL->scrollMultiplier.x);
+			ImGui::InputFloat("Y Scroll Multiplier", &selectedPL->scrollMultiplier.y);
+			ImGui::InputFloat("X Constant Scroll Rate", &selectedPL->constScrollRate.x);
+			ImGui::InputFloat("Y Constant Scroll Rate", &selectedPL->constScrollRate.y);
+			if (ImGui::Button("Change sprite")) {
+				ImGui::OpenPopup("Select asset##change PL sprite");
+			}
+
+			if (ImGui::BeginPopup("Select asset##change PL sprite"))
+			{
+				int index;
+				std::vector<std::string> sprites;
+				for (auto& txtn : currentRoom.textures) {
+					sprites.push_back(txtn.first);
+				}
+				if (ImGui::ListBox("Texture", &index, sprites)) {
+					selectedPL->texturename = sprites[index];
+					
+					ImGui::CloseCurrentPopup();
+				}
+				ImGui::EndPopup();
+			}
+			
+		}
 		ImGui::End();
 	}
 
 	if (menu::objectsWindow) {
 		ImGui::Begin("Objects"); // begin window
 		if (ImGui::Button("New Object")) {
-			/*int objcount = 500;
-			uint64 pretime = GetTimeMs64();
-			for (int i = 0; i < objcount; i++) {
-			HCObject *obj = NewObject({ NewScript(&domain, "Spring") }, ("Test #" + std::to_string(i)));
-			obj->startposition = Vector2f(i * 256, 256);
-			obj->position = obj->startposition;
-			}
-			std::cout << "Mass init benchmark (" << objcount << " objects): " << GetTimeMs64() - pretime << "ms\n";*/
-			//globalObjInitCount++;
 			HCObject* obj = NewObject({}, currentLayer, &currentRoom, ("New Object #" + std::to_string(0)));
 			obj->startposition = cam.position;
 			obj->position = obj->startposition;
@@ -1157,56 +1263,116 @@ void im_render(sf::RenderWindow& window) {
 
 		if (selectedObject) {
 			ImGui::Separator();
+
+			ImGui::Text("Selected Object - ");
+			ImGui::SameLine();
+			if (ImGui::InputText("##Object name input", selectedObject->name.data(), 64)) {
+				//ImGui doesn't resize the string after changing the text, so here's a dirty trick to avoid bugs
+
+				if (selectedObject->name.size() != 64)
+					selectedObject->name.resize(64);
+
+				//size_t size = selectedObject->name.find_first_of('\0') + 1;
+				//if (size != 0)
+				//	selectedObject->name.resize(size);
+			}
+
 			
-			float pos[2] = { selectedObject->position.x, selectedObject->position.y };
-			ImGui::InputFloat2("Position", pos, 1.0f);
-			selectedObject->position = { pos[0], pos[1] };
-
-			float size[2] = { selectedObject->GetSize().x, selectedObject->GetSize().y };
-			ImGui::InputFloat2("Size", size, 1.0f);
-			selectedObject->SetSize({size[0], size[1]});
-
-
-			for (auto& component : *selectedObject->GetComponentsPtr()) {
-				component.im_draw();
-				ImGui::Separator();
-				gameWindow.draw(component);
-			}
-			if (ImGui::Button("New Component")) {
-				ImGui::OpenPopup("Select asset##add component");
-			}
-
-			if (ImGui::BeginPopup("Select asset##add component"))
-			{
-				int index;
-				std::vector<std::string> components = { "SpriteRenderer", "Renderer3D", "SheetAnimator", "CollisionHazard" };
-				if (ImGui::ListBox("Type", &index, components)) {
-					/*switch (index) {
-					case 0:
-						selectedObject->AddComponent(new SpriteRenderer(selectedObject, &currentRoom));
-						break;
-					case 1:
-						selectedObject->AddComponent(new Renderer3D(selectedObject, &currentRoom));
-						break;
-					case 2:
-						selectedObject->AddComponent(new SheetAnimator(selectedObject, &currentRoom));
-						break;
-					case 3:
-						selectedObject->AddComponent(new CollisionHazard(selectedObject, &currentRoom));
-					default:
-						break;
-					}*/
-					HCCompFactory* factory = HCCompFactory::Get();
-					HCComponent* component = factory->CreateComponent(components[index], &currentRoom, selectedObject);
-					if (component)
-						selectedObject->AddComponent(component);
-					else
-						std::cout << "Could not create component of type " << components[index] << " (CreateComponent() returned nullptr)\n";
-					ImGui::CloseCurrentPopup();
+			if (ImGui::Button("Delete")) {
+				
+				for (auto& l : currentRoom.objects) {
+					auto it = std::find(l.begin(), l.end(), *selectedObject);	
+					if (it != l.end()) {
+						l.erase(it);
+					}
 				}
-				ImGui::EndPopup();
+				selectedObject = nullptr;
 			}
-			
+
+			ImGui::SameLine();
+			static bool focusingcam = false;
+			if (ImGui::Button("Go to")) {
+				focusingcam = true;
+			}
+			if (focusingcam) {
+				Vector2f objposition = selectedObject->GetPosition() + selectedObject->GetSize() / 2.f;
+				cam.position.x = Lerp(cam.position.x, objposition.x, 0.1f);
+				cam.position.y = Lerp(cam.position.y, objposition.y, 0.1f);
+
+				if (std::abs(cam.position.x - objposition.x) < 0.1f &&
+					std::abs(cam.position.y - objposition.y) < 0.1f) {
+					focusingcam = false;
+					cam.position = objposition;
+				}
+
+				if (Keyboard::isKeyPressed(Keyboard::A)||
+					Keyboard::isKeyPressed(Keyboard::W) || 
+					Keyboard::isKeyPressed(Keyboard::S) ||
+					Keyboard::isKeyPressed(Keyboard::D))
+					focusingcam = false;
+			}
+
+			if (selectedObject) {
+
+
+				float pos[2] = { selectedObject->position.x, selectedObject->position.y };
+				ImGui::InputFloat2("Position", pos, 1.0f);
+				selectedObject->position = { pos[0], pos[1] };
+
+				float size[2] = { selectedObject->GetSize().x, selectedObject->GetSize().y };
+				ImGui::InputFloat2("Size", size, 1.0f);
+				selectedObject->SetSize({ size[0], size[1] });
+
+				
+
+				auto &vec = *selectedObject->GetComponentsPtr();
+				for (int i = 0; i < vec.size(); i++) {
+					auto &component = vec[i];
+					
+					ImGui::Separator();
+					
+					std::string name = typeid(component).name();
+					name = name.substr(6);
+					ImGui::Text(name.c_str());
+
+					ImGui::SameLine(ImGui::GetWindowWidth() - 30);
+					
+					if (ImGui::Button(("X##" + std::to_string(i)).c_str())) {
+						vec.erase(vec.begin() + i);
+						continue;
+					}
+					component.im_draw();
+					gameWindow.draw(component);
+				}
+
+
+				ImGui::Separator();
+				
+				if (ImGui::Button("New Component")) {
+					ImGui::OpenPopup("Select asset##add component");
+				}
+
+				if (ImGui::BeginPopup("Select asset##add component"))
+				{
+					int index;
+					std::vector<std::string> components = 
+					{	"SpriteRenderer", 
+						"SheetAnimator", 
+						"CollisionHazard",
+						"PythonScript",};
+
+					if (ImGui::ListBox("Type", &index, components)) {
+						HCCompFactory* factory = HCCompFactory::Get();
+						HCComponent* component = factory->CreateComponent(components[index], &currentRoom, selectedObject);
+						if (component)
+							selectedObject->AddComponent(component);
+						else
+							std::cout << "Could not create component of type " << components[index] << " (CreateComponent() returned nullptr)\n";
+						ImGui::CloseCurrentPopup();
+					}
+					ImGui::EndPopup();
+				}
+			}
 
 		}
 

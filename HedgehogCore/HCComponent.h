@@ -27,7 +27,7 @@ public:
 	static HCComponent* create(Room* room, HCObject* parent) { return nullptr; }
 
 	//operator overloads for saving/loading
-
+	friend std::ifstream& operator>>(std::ifstream& ifs, Room& rt);
 	friend std::ofstream& operator<<(std::ofstream& ofs, const HCComponent& comp);
 	friend std::ifstream& operator>>(std::ifstream& ifs, HCComponent& comp);
 	friend class HCCompFactory;
@@ -214,6 +214,26 @@ public:
 };
 
 
+class PythonScript : public HCComponent {
+private:
+	std::string scripttext;
+	std::string filename;
+	bool running;
+public:
+	PythonScript* clone() const override { return new PythonScript(*this); }
+	using HCComponent::HCComponent;
+	virtual void Update(sf::Time dt);
+	void Update(sf::Time dt, Player& player) override;
+	void im_draw() override;
+	void draw(sf::RenderTarget& target, sf::RenderStates states) const override;
+
+	virtual std::ofstream& filestream_out(std::ofstream& ofs) const;
+	virtual std::ifstream& filestream_in(std::ifstream& ifs);
+	static HCComponent* create(Room* room, HCObject* parent);
+
+
+	static HCComponent* factory_create(std::ifstream& ifs);
+};
 
 //Derived preset
 /*

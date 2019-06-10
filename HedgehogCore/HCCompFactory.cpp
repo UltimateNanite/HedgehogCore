@@ -6,10 +6,8 @@ void HCCompFactory::Register(const std::string& compName, LoadComponentFn pfnLoa
 }
 
 
-HCComponent* HCCompFactory::LoadComponent(std::ifstream& in, Room* room, HCObject* parent)
+HCComponent* HCCompFactory::LoadComponent(std::string name, std::ifstream& in, Room* room, HCObject* parent)
 {
-	std::string name;
-	in >> name;
 	FactoryMap::iterator it = m_FactoryMap.find(name);
 	if (it != m_FactoryMap.end()) {
 		HCComponent* result = it->second.first(in);
@@ -38,6 +36,7 @@ HCCompFactory::HCCompFactory()
 	Register("CollisionHazard", &CollisionHazard::factory_create, &CollisionHazard::create);
 	Register("SpriteRenderer", &SpriteRenderer::factory_create, &SpriteRenderer::create);
 	Register("SheetAnimator", &SheetAnimator::factory_create, &SheetAnimator::create);
+	Register("PythonScript", &PythonScript::factory_create, &PythonScript::create);
 	//Register("ShapeRenderer", &ShapeRenderer::factory_create, &ShapeRenderer::create);
 }
 

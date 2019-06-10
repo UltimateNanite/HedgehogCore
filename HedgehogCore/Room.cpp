@@ -76,7 +76,7 @@ std::ofstream& operator<<(std::ofstream& ofs, const Room& rt) {
 			}
 		}
 	}
-	ofs << -1 << std::endl; //End of Tiles
+	ofs << -3 << " "; //End of Tiles
 
 	//Save tile data to .tdata files
 	for (auto& it : rt.tilemapdata) {
@@ -87,7 +87,13 @@ std::ofstream& operator<<(std::ofstream& ofs, const Room& rt) {
 
 	for (int l = 0; l < rt.objects.size(); l++) {
 		for (auto& obj : rt.objects[l]) {
-			ofs << l << ":" << obj.GetPosition().x << ":" << obj.GetPosition().y << obj.GetSize().x << ":" << obj.GetSize().y <<" " << obj.name <<" {";
+			std::string name = obj.name;
+
+			size_t size = name.find_first_of('\0') + 1;
+			if (size != 0)
+				name.resize(size);
+
+			ofs << l << ":" << obj.GetPosition().x << ":" << obj.GetPosition().y << ":" << obj.GetSize().x << ":" << obj.GetSize().y <<" " << name <<" { ";
 			
 			
 			for (auto& comp : *obj.GetConstComponentsPtr()) {
@@ -101,7 +107,7 @@ std::ofstream& operator<<(std::ofstream& ofs, const Room& rt) {
 	}
 	return ofs;
 }
-
+#define ENDOFTILESID
 std::ifstream& operator>>(std::ifstream& ifs, Room& rt) {
 
 	
@@ -122,9 +128,8 @@ std::ifstream& operator>>(std::ifstream& ifs, Room& rt) {
 		ifs >> l;
 		if (l < 0) {
 			
-			if (l == -1) {
-				ifs >> del1;
-				continue;
+			if (l == -3) {
+				break;
 			}
 			if (l == TILEMAPID) {
 				
@@ -167,7 +172,7 @@ std::ifstream& operator>>(std::ifstream& ifs, Room& rt) {
 
 
 	//Objects
-	while (ifs.good()) {
+	while (ifs.good() && !ifs.eof()) {
 		
 
 		char del1 = '/0';
@@ -183,30 +188,59 @@ std::ifstream& operator>>(std::ifstream& ifs, Room& rt) {
 		char del6 = '/0';
 		std::string name;
 		char del7 = '/0';
-		ifs >> l >> del1 >> x >> del2 >> y >> del3 >> xs >> del4 >> ys >> del5;
+		ifs >> l >> del1 >> x >> del2 >> y >> del3 >> xs >> del4 >> ys;
 		char in = '/0';
 
-		do {
-			ifs >> in;
-			name += in;
-		} while (in != '{');
+		std::string namein = "";
+		int nametimeout = 1000;
+		while (nametimeout > 0) {
+			nametimeout--;
+			ifs >> namein;
+			if (namein == "{") {
+				name = name.substr(0, name.size() - 1);
+				break;
+			}
+			name += namein + " ";
+		}
+		if (nametimeout == 0)
+			throw std::runtime_error("Room file corrupted.");
+
 
 		HCObject obj(name);
+		obj.position = sf::Vector2f(x, y);
+		obj.SetSize(sf::Vector2f(xs, ys));
 		while (in != '}') {
 
 			std::string result;
 			while (in != ':') {
 				ifs >> in;
+				if (in == ':') break;
 				result += in;
 			}
+
 			HCCompFactory* factory = HCCompFactory::Get();
 
-			factory->LoadComponent(ifs, &rt, &obj);
+			obj.AddComponent(factory->LoadComponent(result, ifs, &rt, &obj));
 			ifs >> in;
 			if (in != ',')
 				throw std::exception("Room file corrupt.");
 			ifs >> in;
+			if (in == '}')
+				break;
+			else
+				ifs.unget();
 		}
+		rt.objects[l].push_back(obj);
+
+		HCObject* inMem = &rt.objects[l][rt.objects[l].size() - 1];
+		for (auto& c : *inMem->GetComponentsPtr()) {
+			c.parent = inMem;
+		}
+		ifs >> in;
+		if (!ifs.eof())
+			ifs.unget();
+		else
+			break;
 	}
 	
 	return ifs;

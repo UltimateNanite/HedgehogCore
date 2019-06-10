@@ -27,7 +27,7 @@ public:
 	}
 
 	void Register(const std::string& compName, LoadComponentFn pfnLoad, CreateComponentFn pfnCreate);
-	HCComponent* LoadComponent(std::ifstream& in, Room* room, HCObject* parent);
+	HCComponent* LoadComponent(std::string name, std::ifstream& in, Room* room, HCObject* parent);
 	HCComponent* CreateComponent(std::string in, Room* room, HCObject* parent);
 
 	std::string GetComponentName(LoadComponentFn pfnLoad, CreateComponentFn pfnCreate);

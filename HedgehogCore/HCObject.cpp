@@ -19,7 +19,7 @@ HCObject* NewObject(std::vector<HCComponent*> components, int layer, Room* curre
 
 	void *IDPT = &ID;
 
-	objInMem->AddComponent(new Renderer3D(objInMem, currentRoom));
+	//objInMem->AddComponent(new Renderer3D(objInMem, currentRoom));
 	ObjectAssociations assoc;
 	assoc.parent = objInMem;
 	currentRoom->associations.insert(std::pair<int, ObjectAssociations>(ID, assoc));
@@ -61,6 +61,7 @@ int HCObject::Update(sf::Time deltaTime, Player &player)
 
 HCObject::~HCObject()
 {
+	//delete[] components.c_array();
 }
 void HCObject::AddComponent(HCComponent *component) {
 	this->components.push_back(component);
