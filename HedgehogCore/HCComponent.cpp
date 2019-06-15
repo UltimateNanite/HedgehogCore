@@ -516,14 +516,18 @@ void PythonScript::im_draw()
 	else {
 		ImGui::Text("(!) Invalid module");
 	}
-	
-	if (running) {
-		if (ImGui::Button("Pause"))
-			running = false;
+
+	if (ImGui::Button("Play")) {
+		running = true;
 	}
-	else {
-		if (ImGui::Button("Play"))
-			running = true;
+	ImGui::SameLine();
+	if (ImGui::Button("Pause")) {
+		running = false;
+	}
+	ImGui::SameLine();
+	if (ImGui::Button("Stop")) {
+		running = false;
+		CallFunction("setup");
 	}
 #endif
 }
