@@ -206,7 +206,7 @@
 //  4503 'insert' : decorated name length exceeded, name was truncated
 //  4702 "unreachable code" as the MS STL header causes it in release mode.
 //  Again, the code causing the warning will be cleaned up by the compiler.
-//  4786 "identifier truncated to 256 characters" as this is yeetn hundreds
+//  4786 "identifier truncated to 256 characters" as this is thrown hundreds
 //  of times VC6 as soon as STL is used.
 #ifdef _MSC_VER
 # pragma warning (push)

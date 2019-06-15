@@ -47,11 +47,11 @@ public:
 	}
 
 	template<typename T>
-	std::vector<T> GetComponents() {
-		std::vector<T> result;
+	std::vector<T*> GetComponents() {
+		std::vector<T*> result;
 		for (auto& component : components) {
 			if (dynamic_cast<T*>(&component)) {
-				result.push_back(dynamic_cast<T>(component));
+				result.push_back(dynamic_cast<T*>(&component));
 			}
 		}
 		return result;

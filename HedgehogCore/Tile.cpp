@@ -102,7 +102,7 @@ float Tile::GetHeight(float index, int groundMode, bool smooth) {
 		else if (groundMode == 1)
 			result = Lerp(heightArrays.left[std::floor(index)], heightArrays.left[std::ceil(index)], fraction);
 		else
-			yeet std::invalid_argument("GameTile::GetHeight(): GroundMode out of range. (" + std::to_string(groundMode) + ")");
+			throw std::invalid_argument("GameTile::GetHeight(): GroundMode out of range. (" + std::to_string(groundMode) + ")");
 	}
 	else {
 		if (groundMode == 0)
@@ -114,7 +114,7 @@ float Tile::GetHeight(float index, int groundMode, bool smooth) {
 		else if (groundMode == 1)
 			result = heightArrays.left[(int)index];
 		else 
-			yeet std::invalid_argument("GameTile::GetHeight(): GroundMode out of range. (" + std::to_string(groundMode) + ")");
+			throw std::invalid_argument("GameTile::GetHeight(): GroundMode out of range. (" + std::to_string(groundMode) + ")");
 	}
 	return result;
 }
@@ -128,7 +128,7 @@ std::vector<sf::Uint8> *Tile::GetHeightArray(int groundMode) {
 	else if (groundMode == 1)
 		return &this->heightArrays.left;
 	else {
-		yeet std::invalid_argument("GameTile::GetHeightArray(): GroundMode out of range. (" + std::to_string(groundMode) + ")");
+		throw std::invalid_argument("GameTile::GetHeightArray(): GroundMode out of range. (" + std::to_string(groundMode) + ")");
 	}
 }
 void Tile::SetHeightArray(short *heightArray, int groundMode) { return; }

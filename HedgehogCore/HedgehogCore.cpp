@@ -59,7 +59,8 @@ bool scriptpushcontrol;
 //bool editing = false;
 GlobalGameState state;
 
-Room currentRoom;
+
+#include "PyMethods.h"
 //Project currentProject;
 
 ParallaxLayer* selectedPL;
@@ -302,7 +303,8 @@ int main(int argc, char* argv[])
 	//currentProject.GetRoomsPtr()->push_back(Room(&currentProject));
 
 
-
+	PyImport_AppendInittab("hc", &PyInit_myextension);
+	Py_Initialize();
 
 #ifdef _RUNTIMEONLY
 	FreeConsole();
@@ -449,13 +451,13 @@ int main(int argc, char* argv[])
 
 		int rooms_size = std::stoi(ini.GetValue("Global", "rooms_size", "-1"));
 		if (rooms_size < 0) 
-			yeet std::exception("No rooms found in startupdata.ini (rooms_size <= 0)");
+			throw std::exception("No rooms found in startupdata.ini (rooms_size <= 0)");
 
 		for (int i = 0; i < rooms_size; i++) {
 			std::string currentRoom = "room" + std::to_string(i);
 			std::string path = ini.GetValue(currentRoom.c_str(), "path", "");
 			if (path == "")
-				yeet std::exception("Cannot read app: startupdata.ini is incorrect.");
+				throw std::exception("Cannot read app: startupdata.ini is incorrect.");
 			std::ifstream in(path);
 			Room result = Room();
 			in >> result;
@@ -596,7 +598,7 @@ int main(int argc, char* argv[])
 		}
 #endif
 	}
-
+	Py_Finalize();
 	return 0;
 }
 
@@ -1077,11 +1079,7 @@ void FixedUpdate(GlobalGameState & gamestate, Player & player, sf::Time dt) {
 				}
 			}
 
-			for (auto& l : currentRoom.objects) {
-				for (auto& obj : l) {
-					obj.Update(dt, player);
-				}
-			}
+			
 
 			if (hasCollided && player.state.airborne) {
 
@@ -1123,10 +1121,17 @@ void FixedUpdate(GlobalGameState & gamestate, Player & player, sf::Time dt) {
 
 
 	}
+	//End of sub-frame updates
+	for (auto& l : currentRoom.objects) {
+		for (auto& obj : l) {
+			obj.Update(dt, player);
+		}
+	}
+
 	if (player.state.invincFrames > 0 && !player.state.knockback)
 		player.state.invincFrames--;
 
-	//End of sub-frame updates
+	
 	if ((!hasAcc || player.state.rolling) && !player.state.airborne) {
 		if (abs(player.state.groundSpeed) > physics.frc) {
 			if (player.state.rolling)
@@ -1491,6 +1496,7 @@ void Draw(RenderWindow& window, Player& player) {
 
 
 	view = View(camera.position + camera.offset, Vector2f(gameWindow.getSize()) * camera.zoomFactor);
+
 	gameWindow.setView(view);
 
 
@@ -1510,16 +1516,15 @@ void Draw(RenderWindow& window, Player& player) {
 		for (int x = upLeftScrTile.x; x < downRightScrTile.x; x++) {
 			for (int y = upLeftScrTile.y; y < downRightScrTile.y; y++) {
 				Vector2i currentChunk = { x / 16, y / 16 };
-				if (emptychunks[x][y] == CHUNK_EMPTY) {
-					std::cout << "Skipped chunk.";
+				if (emptychunks[currentChunk.x][currentChunk.y] == CHUNK_EMPTY) {
 					y += 16;
 				}
 
 				WorldTile* currentTile = GetTileAtGlobalIndex(Vector2i(x, y), l, &currentRoom);
 					
 				bool nonempty = AddToDrawBuffer(*currentTile, drawBuffers, gameWindow);
-				if (emptychunks[x][y] == CHUNK_UNKNOWN && nonempty)
-					emptychunks[x][y] = CHUNK_NONEMPTY;
+				if (emptychunks[currentChunk.x][currentChunk.y] == CHUNK_UNKNOWN && nonempty)
+					emptychunks[currentChunk.x][currentChunk.y] = CHUNK_NONEMPTY;
 				if (debugInfoLevel >= DebugInfoLevels::MAX)
 					debugdrawcalls++;
 			}
@@ -1554,14 +1559,15 @@ void Draw(RenderWindow& window, Player& player) {
 	for (int l = player.state.layer; l < currentRoom.chunks.size(); l++) { //Layer
 		for (int x = upLeftScrTile.x; x < downRightScrTile.x; x++) {
 			for (int y = upLeftScrTile.y; y < downRightScrTile.y; y++) {
-				if (emptychunks[x][y] == CHUNK_EMPTY)
+				Vector2i currentChunk = { x / 16, y / 16 };
+				if (emptychunks[currentChunk.x][currentChunk.y] == CHUNK_EMPTY)
 					y += 16;
 
 				WorldTile * currentTile = GetTileAtGlobalIndex(Vector2i(x, y), l, &currentRoom);
 
 				bool nonempty = AddToDrawBuffer(*currentTile, drawBuffers, gameWindow);
-				if (emptychunks[x][y] == CHUNK_UNKNOWN && nonempty)
-					emptychunks[x][y] = CHUNK_NONEMPTY;
+				if (emptychunks[currentChunk.x][currentChunk.y] == CHUNK_UNKNOWN && nonempty)
+					emptychunks[currentChunk.x][currentChunk.y] = CHUNK_NONEMPTY;
 				if (debugInfoLevel >= DebugInfoLevels::MAX)
 					debugdrawcalls++;
 			}

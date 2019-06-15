@@ -116,6 +116,9 @@
     <ClInclude Include="HCCompFactory.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="PyMethods.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Image Include="referenceimage.png">

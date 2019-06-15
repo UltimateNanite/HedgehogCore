@@ -16,7 +16,17 @@
 #include "imgui-extra.h"
 #include "TinyFileDialog.h"
 #include "HCCompFactory.h"
-Room currentRoom(nullptr);
+
+
+#ifdef _DEBUG
+#undef _DEBUG
+#include <Python.h>
+#define _DEBUG
+#else
+#include <Python.h>
+#endif
+
+#include "PyMethods.h"
 
 
 #define CHUNK_UNKNOWN 0
@@ -24,7 +34,7 @@ Room currentRoom(nullptr);
 #define CHUNK_NONEMPTY 2
 short emptychunks[64][8];
 
-
+bool showDebugInfo = true;
 std::map<std::string, AssetSelector> assetselectors;
 
 
@@ -44,6 +54,7 @@ void update(sf::Time deltaTime, sf::RenderWindow& window);
 void render(sf::RenderWindow& window, sf::Time deltaTime, int framesPerSecond);
 
 std::unordered_map<std::string, sf::VertexArray> drawBuffers;
+
 bool AddToDrawBuffer(const WorldTile& tile, std::unordered_map<std::string, sf::VertexArray>& drawBuffers, sf::RenderTarget& gameWindow, float brightness = 1.0f) {
 	if (!tile.tile)
 		return false;
@@ -319,9 +330,18 @@ bool useTool(sf::Event::MouseButtonEvent eventparams, const sf::RenderTexture& d
 		
 		if (eventparams.button == sf::Mouse::Left) {
 			
+			selectedObject = nullptr;
+			for (auto& l : currentRoom.objects) {
+				for (auto& obj : l) {
+					if (sf::FloatRect(obj.GetPosition(), obj.GetSize()).contains(mousePos))
+						selectedObject = &obj;
+				}
+			}
+
 			if (selectedTiles.size() == 1 && &currentTile == selectedTiles[0]) {
 				using namespace sf;
 				currentTilemapEditingIndex = 0;
+				currentGroundMode = 0;
 				editingTilemapTile = &currentTile;
 			}
 			else {
@@ -329,6 +349,27 @@ bool useTool(sf::Event::MouseButtonEvent eventparams, const sf::RenderTexture& d
 				if (sf::Keyboard::isKeyPressed(sf::Keyboard::LControl)) {
 					if (&currentTile && std::find(selectedTiles.begin(), selectedTiles.end(), &currentTile) == selectedTiles.end())
 						selectedTiles.push_back(&currentTile);
+				}
+				else if (sf::Keyboard::isKeyPressed(sf::Keyboard::LShift) && selectedTiles.size() == 1) {
+					sf::Vector2i topLeftIndex = { 0,0 };
+					sf::Vector2i bottomRightIndex = { 0,0 };
+					topLeftIndex.x = std::min(selectedTiles[0]->GetPosition().x, currentTile.GetPosition().x);
+					topLeftIndex.x /= 16;
+					topLeftIndex.y = std::min(selectedTiles[0]->GetPosition().y, currentTile.GetPosition().y);
+					topLeftIndex.y /= 16;
+
+					bottomRightIndex.x = std::max(selectedTiles[0]->GetPosition().x, currentTile.GetPosition().x);
+					bottomRightIndex.x /= 16;
+					bottomRightIndex.y = std::max(selectedTiles[0]->GetPosition().y, currentTile.GetPosition().y);
+					bottomRightIndex.y /= 16;
+
+					selectedTiles.clear();
+					for (int x = topLeftIndex.x; x <= bottomRightIndex.x; x++) {
+						for (int y = topLeftIndex.y; y <= bottomRightIndex.y; y++) {
+							selectedTiles.push_back(GetTileAtGlobalIndex({ x,y }, currentLayer, &currentRoom));
+						}
+					}
+
 				}
 				else {
 					selectedTiles.clear();
@@ -513,6 +554,11 @@ int main()
 #pragma endregion
 	ImGui::EndFrame();
 
+	std::cout << "Initializing Python...\n";
+	PyImport_AppendInittab("hc", &PyInit_myextension);
+	Py_Initialize();
+
+
 
 	Clock deltaClock;
 	Time deltaTime;
@@ -525,7 +571,6 @@ int main()
 
 	while (running) {
 		
-
 		try {
 			Event event;
 			while (window.pollEvent(event)) {
@@ -545,6 +590,8 @@ int main()
 					if (event.type == Event::MouseButtonPressed) {
 						useTool(event.mouseButton, gameWindow, window, cam);
 					}
+					
+
 					if (event.type == Event::MouseWheelScrolled) {
 						std::cout << event.mouseWheelScroll.y << std::endl;
 						if (event.mouseWheelScroll.delta > 0 && cam.zoomFactor > 0.25f)
@@ -580,6 +627,16 @@ int main()
 									selectedTile->tile = nullptr;
 								}
 								selectedTiles.clear();
+
+								if (selectedObject) {
+									for (auto& l : currentRoom.objects) {
+										auto it = std::find(l.begin(), l.end(), *selectedObject);
+										if (it != l.end()) {
+											l.erase(it);
+										}
+									}
+									selectedObject = nullptr;
+								}
 								break;
 							}
 						}
@@ -604,6 +661,19 @@ int main()
 							case Keyboard::Down:
 								if (currentHeightVal > 0)
 									currentHeightVal--;
+								break;
+
+							case Keyboard::K:
+								currentGroundMode = 0;
+								break;
+							case Keyboard::J:
+								currentGroundMode = 1;
+								break;
+							case Keyboard::I:
+								currentGroundMode = 2;
+								break;
+							case Keyboard::L:
+								currentGroundMode = 3;
 								break;
 							}
 						}
@@ -643,6 +713,8 @@ int main()
 		}
 	}
 	ImGui::SFML::Shutdown();
+	Py_Finalize();
+
 }
 
 
@@ -685,15 +757,7 @@ void update(sf::Time deltaTime, sf::RenderWindow& window) {
 		}
 	}
 	if (!ImGui::GetIO().WantCaptureMouse) {
-		if (sf::Mouse::isButtonPressed(Mouse::Left) && tool == Tools::Select) {
-			selectedObject = nullptr;
-			for (auto& l : currentRoom.objects) {
-				for (auto& obj : l) {
-					if (sf::FloatRect(obj.GetPosition(), obj.GetSize()).contains(getWorldMousePos(window)))
-						selectedObject = &obj;
-				}
-			}
-		}
+		
 
 		if (Mouse::isButtonPressed(Mouse::Left) && selectedObject) {
 			Vector2f mouseMov = getWorldMousePos(window) - prevMousePos;
@@ -754,10 +818,10 @@ void drawGrid(sf::RenderTarget& target, sf::Vector2i upLeftScrTile, sf::Vector2i
 	for (int y = upLeftScrTile.y; y < downRightScrTile.y; y++) {
 		if (std::fmod(y, 16) != 0) continue;
 
-		upLeft.position = { 0,                         y * 16.f };
-		upRight.position = { downRightScrTile.x * 16.f, y * 16.f };
-		downRight.position = { downRightScrTile.x * 16.f, y * 16.f + cam.zoomFactor };
-		downLeft.position = { 0,                         y * 16.f + cam.zoomFactor };
+		upLeft.position =		{ 0,                         y * 16.f };
+		upRight.position =		{ downRightScrTile.x * 16.f, y * 16.f };
+		downRight.position =	{ downRightScrTile.x * 16.f, y * 16.f + cam.zoomFactor };
+		downLeft.position =		{ 0,                         y * 16.f + cam.zoomFactor };
 		horGrid.append(upLeft);
 		horGrid.append(upRight);
 		horGrid.append(downRight);
@@ -766,16 +830,18 @@ void drawGrid(sf::RenderTarget& target, sf::Vector2i upLeftScrTile, sf::Vector2i
 	for (int x = upLeftScrTile.x; x < downRightScrTile.x; x++) {
 		if (std::fmod(x, 16) != 0) continue;
 
-		upLeft.position = { x * 16.f,                  0 };
-		upRight.position = { x * 16.f + cam.zoomFactor, 0 };
-		downRight.position = { x * 16.f + cam.zoomFactor, downRightScrTile.y * 16.f };
-		downLeft.position = { x * 16.f,					 downRightScrTile.y * 16.f };
+		upLeft.position =		{ x * 16.f,                  0 };
+		upRight.position =		{ x * 16.f + cam.zoomFactor, 0 };
+		downRight.position =	{ x * 16.f + cam.zoomFactor, downRightScrTile.y * 16.f };
+		downLeft.position =		{ x * 16.f,					 downRightScrTile.y * 16.f };
 		horGrid.append(upLeft);
 		horGrid.append(upRight);
 		horGrid.append(downRight);
 		horGrid.append(downLeft);
 	}
 	gameWindow.draw(horGrid);
+
+	
 }
 
 
@@ -820,7 +886,7 @@ void render(sf::RenderWindow & window, sf::Time deltaTime, int framesPerSecond) 
 		for (int x = upLeftScrTile.x; x < downRightScrTile.x; x++) {
 			for (int y = upLeftScrTile.y; y < downRightScrTile.y; y++) {
 				Vector2i currentChunk = { x / 16, y / 16 };
-				if (emptychunks[x][y] == CHUNK_EMPTY) {
+				if (emptychunks[currentChunk.x][currentChunk.y] == CHUNK_EMPTY) {
 					y += 16;
 					if (y >= downRightScrTile.y)
 						break;
@@ -831,11 +897,10 @@ void render(sf::RenderWindow & window, sf::Time deltaTime, int framesPerSecond) 
 
 				bool nonempty = AddToDrawBuffer(*currentTile, drawBuffers, gameWindow);
 				
-				int cx = x / 16;
-				int cy = y / 16;
-				if (emptychunks[cx][cy] == CHUNK_UNKNOWN && nonempty) {
+
+				if (emptychunks[currentChunk.x][currentChunk.y] == CHUNK_UNKNOWN && nonempty) {
 					std::cout << "Set chunk to nonempty.\n";
-					emptychunks[cx][cy] = CHUNK_NONEMPTY;
+					emptychunks[currentChunk.x][currentChunk.y] = CHUNK_NONEMPTY;
 				}
 			}
 		}
@@ -858,7 +923,7 @@ void render(sf::RenderWindow & window, sf::Time deltaTime, int framesPerSecond) 
 	}
 
 	for (auto selectedTile : selectedTiles) {
-		
+		if (editingTilemapTile) {
 			RectangleShape tileDataDisplay;
 			tileDataDisplay.setFillColor(Color(0, 0, 255, 100));
 			float x = selectedTile->chunk.x * 256 + selectedTile->inChunkPos.x * 16;
@@ -870,12 +935,55 @@ void render(sf::RenderWindow & window, sf::Time deltaTime, int framesPerSecond) 
 				else
 					tileDataDisplay.setFillColor(Color(0, 0, 255, 100));
 
-				Vector2f pos = Vector2f(x + i, y);
-				tileDataDisplay.setPosition(pos + Vector2f(0, 16 - selectedTile->GetHeight(pos, 0)));
-				tileDataDisplay.setSize(Vector2f(1, selectedTile->GetHeight(pos, 0)));
+				Vector2f pos;
+				int height;
+				switch (currentGroundMode) {
+				case 0: //Floor
+					pos = Vector2f(x + i, y);
+					height = selectedTile->GetHeight(pos, currentGroundMode);
+					tileDataDisplay.setPosition(pos + Vector2f(0, 16 - height));
+					tileDataDisplay.setSize(Vector2f(1, height));
+					break;
+				case 1: //Left wall
+					pos = Vector2f(x, y + i);
+					height = selectedTile->GetHeight(pos, currentGroundMode);
+					tileDataDisplay.setPosition(pos + Vector2f(height, 0));
+					tileDataDisplay.setSize(Vector2f(height, 1));
+					break;
+				case 2: //Ceiling
+					pos = Vector2f(x + i, y);
+					height = selectedTile->GetHeight(pos, currentGroundMode);
+					tileDataDisplay.setPosition(pos + Vector2f(0, height));
+					tileDataDisplay.setSize(Vector2f(1, height));
+					break;
+				case 3: //Right wall
+					pos = Vector2f(x, y + i);
+					height = selectedTile->GetHeight(pos, currentGroundMode);
+					tileDataDisplay.setPosition(pos + Vector2f(16 - height ,0));
+					tileDataDisplay.setSize(Vector2f(height, 1));
+					break;
+				default:
+					pos = Vector2f(0,0 );
+					height = 0;
+					tileDataDisplay.setPosition(pos);
+					tileDataDisplay.setSize(Vector2f(0, 0));
+					break;
+				}
 				gameWindow.draw(tileDataDisplay);
 				debugDrawCalls++;
 			}
+
+		}
+		else {
+			RectangleShape tileDataDisplay(Vector2f(16.f,16.f));
+			tileDataDisplay.setFillColor(Color(0, 0, 255, 100));
+			float x = selectedTile->chunk.x * 256 + selectedTile->inChunkPos.x * 16;
+			float y = selectedTile->chunk.y * 256 + selectedTile->inChunkPos.y * 16;
+			tileDataDisplay.setPosition(Vector2f(x, y));
+
+			gameWindow.draw(tileDataDisplay);
+			debugDrawCalls++;
+		}
 	}
 
 	//Draw grid
@@ -979,50 +1087,82 @@ void render(sf::RenderWindow & window, sf::Time deltaTime, int framesPerSecond) 
 	
 	
 	
-	
-	Text debugInfo;
-	debugInfo.setFillColor(Color::White);
-	debugInfo.setFont(OpenSans);
-	debugInfo.setCharacterSize(15);
-	
-	using namespace std;
+	if (showDebugInfo) {
+		Text debugInfo;
+		debugInfo.setFillColor(Color::White);
+		debugInfo.setFont(OpenSans);
+		debugInfo.setCharacterSize(15);
+
+		using namespace std;
 
 
-	string debugString = "\nHedgehogCreator - By Robin A. Bellamy\nselected: { ";
+		string debugString = "HedgehogCreator - By Robin A. Bellamy\nselected: { ";
+		if (selectedTiles.size() == 1) {
+			debugString += "\n(" + to_string(selectedTiles[0]->chunk.x) + ", " + to_string(selectedTiles[0]->chunk.y) + "\n";
+			debugString += "(" + to_string(selectedTiles[0]->inChunkPos.x) + ", " + to_string(selectedTiles[0]->inChunkPos.y) + "\n";
+			debugString += "}";
+		}
+		else {
+			for (auto s : selectedTiles) {
+				string sAddr = AddressStr((void const*)s);
 
-	for (auto s : selectedTiles) {
-		string sAddr = AddressStr((void const*)s);
+				debugString += "0x" + sAddr + ", ";
 
-		debugString += "0x" + sAddr + ", ";
+
+
+			}
+			debugString = debugString.substr(0, debugString.size() - 2) + " }\n";
+		}
+		debugString += "tool: " + to_string(tool) + "\n";
+		debugString += "drawcalls: " + to_string(debugDrawCalls) + "\n";
+		debugString += "drawn tile vertices: " + to_string(debugDrawnVertices) + "\n";
+		debugString += "ms: " + to_string(deltaTime.asMilliseconds()) + "\n";
+		debugString += "fps: " + to_string(1.f / deltaTime.asSeconds()) + "\n";
+		debugString += "real window size: " + to_string(window.getSize().x) + ", " + to_string(window.getSize().y) + "\n";
+		debugString += "render window size: " + to_string(gameWindow.getSize().x) + ", " + to_string(gameWindow.getSize().y) + "\n";
+		debugString += "render view size: " + to_string(gameWindow.getView().getSize().x) + ", " + to_string(gameWindow.getView().getSize().y) + "\n";
+		debugString += "camera position: " + to_string(cam.position.x) + ", " + to_string(cam.position.y) + "\n";
+		debugString += "camera zoom: " + to_string(cam.zoomFactor) + "\n";
+
+
+		if (sf::Vector2f(gameWindow.getSize()) == gameWindow.getView().getSize()) {
+			debugString += "no discrepancy";
+		}
+		else {
+			debugString += "discrepancy of " +
+				to_string(gameWindow.getView().getSize().x - gameWindow.getSize().x) + ", " +
+				to_string(gameWindow.getView().getSize().y - gameWindow.getSize().y) + "\n";
+
+		}
+
+		unsigned int objectsAmt = 0;
+		unsigned int compsAmt = 0;
+		for (auto& l : currentRoom.objects) {
+			objectsAmt += l.size();
+			for (auto& obj : l) {
+				compsAmt += obj.GetComponentsPtr()->size();
+			}
+		}
+		debugString += "objects: " + to_string(objectsAmt) + "\n";
+		debugString += "components: " + to_string(compsAmt) + "\n";
+
+
+		debugInfo.setString(debugString);
+		debugInfo.setPosition(Vector2f(
+			30,
+			window.getSize().y / 2.f - debugInfo.getGlobalBounds().height / 2.f
+		));
+
+		//debugInfo.setPosition(gameWindowSprite.getPosition());
+		RectangleShape debugInfoBackdrop(Vector2f(debugInfo.getGlobalBounds().width, debugInfo.getGlobalBounds().height));
+		debugInfoBackdrop.setFillColor(Color(0, 0, 0, 125));
+		debugInfoBackdrop.setPosition(debugInfo.getPosition());
+		debugInfoBackdrop.setOutlineThickness(5);
+		debugInfoBackdrop.setOutlineColor(Color(0, 0, 0, 125));
+		window.draw(debugInfoBackdrop);
+		window.draw(debugInfo);
+
 	}
-	debugString = debugString.substr(0, debugString.size() - 2) + " }\n";
-
-	debugString += "tool: "					+ to_string(tool) + "\n";
-	debugString += "drawcalls: "			+ to_string(debugDrawCalls) + "\n";
-	debugString += "drawn tile vertices: "	+ to_string(debugDrawnVertices) + "\n";
-	debugString += "ms: "					+ to_string(deltaTime.asMilliseconds()) + "\n";
-	debugString += "fps: "					+ to_string(1.f / deltaTime.asSeconds()) + "\n";
-	debugString += "real window size: "		+ to_string(window.getSize().x) + ", " + to_string(window.getSize().y) + "\n";
-	debugString += "render window size: "	+ to_string(gameWindow.getSize().x) + ", " + to_string(gameWindow.getSize().y) + "\n";
-	debugString += "render view size: "		+ to_string(gameWindow.getView().getSize().x) + ", " + to_string(gameWindow.getView().getSize().y) + "\n";
-	debugString += "camera position: "		+ to_string(cam.position.x) + ", " + to_string(cam.position.y) + "\n";
-	debugString += "camera zoom: "			+ to_string(cam.zoomFactor) + "\n";
-
-
-	if (sf::Vector2f(gameWindow.getSize()) == gameWindow.getView().getSize()) {
-		debugString += "no discrepancy";
-	}
-	else {
-		debugString += "discrepancy of " +
-			to_string(gameWindow.getView().getSize().x - gameWindow.getSize().x) + ", " +
-			to_string(gameWindow.getView().getSize().y - gameWindow.getSize().y) + "\n";
-
-	}
-	debugInfo.setString(debugString);
-	//debugInfo.setPosition(gameWindowSprite.getPosition());
-	window.draw(debugInfo);
-
-
 	im_render(window);
 
 
@@ -1126,6 +1266,7 @@ void im_render(sf::RenderWindow& window) {
 
 		if (ImGui::BeginMenu("Debug")) {
 			ImGui::InputInt("Tool", &tool);
+			ImGui::Checkbox("Show debug info", &showDebugInfo);
 			ImGui::EndMenu();
 		}
 		if (ImGui::BeginMenu("Run")) {
@@ -1133,14 +1274,19 @@ void im_render(sf::RenderWindow& window) {
 			std::wstring path(L"" + GetOwnFilePath() + L"/HedgehogCore.exe");
 			std::wstring command(L"-r:" + currentRoom.path + currentRoom.filename);
 
+#ifdef _DEBUG
+			constexpr int showmode = SW_SHOW;
+#else
+			constexpr int showmode = SW_HIDE;
+#endif
 			if (ImGui::MenuItem("Current room")) {
 				saveRoom();
 				std::cout << "Starting HedgehogCore...\n\n";
-				ShellExecute(GetConsoleWindow(), L"open", path.c_str(), command.c_str(), L"", SW_HIDE);
+				ShellExecute(GetConsoleWindow(), L"open", path.c_str(), command.c_str(), L"", showmode);
 			}
 			if (ImGui::MenuItem("Current room (Don't rebuild)")) {
 				std::cout << "Starting HedgehogCore... (no rebuild)\n\n";
-				ShellExecute(GetConsoleWindow(), L"open", path.c_str(), command.c_str(), L"", SW_HIDE);
+				ShellExecute(GetConsoleWindow(), L"open", path.c_str(), command.c_str(), L"", showmode);
 			}
 
 
@@ -1255,7 +1401,9 @@ void im_render(sf::RenderWindow& window) {
 				pointers.push_back(&currentRoom.objects[l][i]);
 			}
 		}
+
 		static int listbox_item_current = 1;
+		
 		if (ImGui::ListBox("", &listbox_item_current, names)) {
 			selectedObject = pointers[listbox_item_current];
 		}
@@ -1265,21 +1413,18 @@ void im_render(sf::RenderWindow& window) {
 			ImGui::Separator();
 
 			ImGui::Text("Selected Object - ");
+			
 			ImGui::SameLine();
+			
 			if (ImGui::InputText("##Object name input", selectedObject->name.data(), 64)) {
 				//ImGui doesn't resize the string after changing the text, so here's a dirty trick to avoid bugs
 
 				if (selectedObject->name.size() != 64)
 					selectedObject->name.resize(64);
-
-				//size_t size = selectedObject->name.find_first_of('\0') + 1;
-				//if (size != 0)
-				//	selectedObject->name.resize(size);
 			}
 
 			
 			if (ImGui::Button("Delete")) {
-				
 				for (auto& l : currentRoom.objects) {
 					auto it = std::find(l.begin(), l.end(), *selectedObject);	
 					if (it != l.end()) {
@@ -1291,9 +1436,11 @@ void im_render(sf::RenderWindow& window) {
 
 			ImGui::SameLine();
 			static bool focusingcam = false;
+			
 			if (ImGui::Button("Go to")) {
 				focusingcam = true;
 			}
+
 			if (focusingcam) {
 				Vector2f objposition = selectedObject->GetPosition() + selectedObject->GetSize() / 2.f;
 				cam.position.x = Lerp(cam.position.x, objposition.x, 0.1f);
@@ -1301,7 +1448,6 @@ void im_render(sf::RenderWindow& window) {
 
 				if (std::abs(cam.position.x - objposition.x) < 0.1f &&
 					std::abs(cam.position.y - objposition.y) < 0.1f) {
-					focusingcam = false;
 					cam.position = objposition;
 				}
 
@@ -1313,7 +1459,6 @@ void im_render(sf::RenderWindow& window) {
 			}
 
 			if (selectedObject) {
-
 
 				float pos[2] = { selectedObject->position.x, selectedObject->position.y };
 				ImGui::InputFloat2("Position", pos, 1.0f);
@@ -1328,14 +1473,14 @@ void im_render(sf::RenderWindow& window) {
 				auto &vec = *selectedObject->GetComponentsPtr();
 				for (int i = 0; i < vec.size(); i++) {
 					auto &component = vec[i];
-					
+					ImGui::Text("");
 					ImGui::Separator();
-					
+					ImGui::Text("");
 					std::string name = typeid(component).name();
 					name = name.substr(6);
 					ImGui::Text(name.c_str());
 
-					ImGui::SameLine(ImGui::GetWindowWidth() - 30);
+					ImGui::SameLine(ImGui::GetWindowWidth() - 40);
 					
 					if (ImGui::Button(("X##" + std::to_string(i)).c_str())) {
 						vec.erase(vec.begin() + i);
@@ -1345,7 +1490,7 @@ void im_render(sf::RenderWindow& window) {
 					gameWindow.draw(component);
 				}
 
-
+				ImGui::Text("");
 				ImGui::Separator();
 				
 				if (ImGui::Button("New Component")) {
@@ -1373,9 +1518,7 @@ void im_render(sf::RenderWindow& window) {
 					ImGui::EndPopup();
 				}
 			}
-
 		}
-
 		ImGui::End(); // end window
 	}
 

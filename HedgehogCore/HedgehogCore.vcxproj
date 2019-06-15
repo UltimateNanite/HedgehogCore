@@ -183,6 +183,7 @@
     <ClInclude Include="Includes.h" />
     <ClInclude Include="ParallaxLayer.h" />
     <ClInclude Include="Project.h" />
+    <ClInclude Include="PyMethods.h" />
     <ClInclude Include="Room.h" />
     <ClInclude Include="SimpleIni.h" />
     <ClInclude Include="SpriteSheet.h" />

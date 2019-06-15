@@ -3,8 +3,6 @@
 #include <vector>
 #include <string>
 
-//I have unlocked the power of the gods
-#define yeet throw
 
 
 class Project;

@@ -4,14 +4,6 @@
 #include "Structs.h"
 #include <imgui.h>
 
-//Python doesn't like the _DEBUG symbol.
-#ifdef _DEBUG
-#undef _DEBUG
-#include <Python.h>
-#define _DEBUG
-#else
-#include <Python.h>
-#endif
 
 #ifdef HC_EDITOR
 #include <imgui_stl.h>
@@ -420,17 +412,111 @@ HCComponent* CollisionHazard::factory_create(std::ifstream& ifs)
 	return new CollisionHazard(nullptr, nullptr);
 }
 
+void PythonScript::LoadScript()
+{
+	
+	pName = PyUnicode_FromString(filename.c_str());
+	pModule = PyImport_Import(pName);
+	if (pModule != NULL)
+		valid = true;
+	else {
+		std::cout << "Error: Failed to load Python script " << filename << "\n";
+		PyErr_Print();
+	}
+	Py_DECREF(pName);
+}
+
+void PythonScript::CallFunction(std::string name, std::vector<std::pair<PyType, std::string>> args)
+{
+	int errorcheck = PyModule_AddObject(pModule, "parent", PyUnicode_FromString(parent->name.c_str()));
+	if (errorcheck == -1)
+	std::cout << "Failed to set parent name in Python.\n";
+	PyObject * pFunc, * pArgs, * pValue = NULL;
+	pFunc = PyObject_GetAttrString(pModule, name.c_str());
+
+	if (pFunc && PyCallable_Check(pFunc)) {
+		pArgs = PyTuple_New(args.size());
+
+		for (int i = 0; i < args.size(); i++) {
+			
+			switch (args[i].first) {
+
+			case PyType::Long:
+				pValue = PyLong_FromString(args[i].second.c_str(), NULL, 10);
+				break;
+
+			case PyType::Bool:
+				if (args[i].second == "true")
+					pValue = PyBool_FromLong(1);
+				else if (args[i].second == "false")
+					pValue = PyBool_FromLong(0);
+				else
+					pValue = NULL;
+				break;
+
+			case PyType::Float:
+				pValue = PyFloat_FromString(PyUnicode_FromString(args[i].second.c_str()));
+				break;
+
+			case PyType::Null:
+				pValue = NULL;
+				break;
+
+			default:
+				break;
+
+			}
+			if (!pValue) {
+				Py_DECREF(pArgs);
+				Py_DECREF(pModule);
+				fprintf(stderr, "Cannot convert argument\n");
+				return;
+			}
+			PyTuple_SetItem(pArgs, i, pValue);
+		}
+
+		pValue = PyObject_CallObject(pFunc, pArgs);
+
+		if (PyErr_Occurred())
+			PyErr_Print();
+
+		Py_DECREF(pArgs);
+
+		Py_DECREF(pFunc);
+	}
+}
+
 void PythonScript::Update(sf::Time dt)
 {
+	
+	if (!valid) {
+		LoadScript();
+		if (!valid) 
+			return;
+		else 
+			CallFunction("setup");
+	}
+	if (running)
+		CallFunction("update", { std::make_pair(PyType::Float, std::to_string(dt.asSeconds())) });
 }
 
 void PythonScript::Update(sf::Time dt, Player& player)
 {
+	Update(dt);
 }
 
 void PythonScript::im_draw()
 {
 #ifdef HC_EDITOR
+	ImGui::Text(("Script: " + filename).c_str());
+	
+	if (valid) {
+		ImGui::Text("Valid module");
+	}
+	else {
+		ImGui::Text("(!) Invalid module");
+	}
+	
 	if (running) {
 		if (ImGui::Button("Pause"))
 			running = false;
@@ -438,9 +524,6 @@ void PythonScript::im_draw()
 	else {
 		if (ImGui::Button("Play"))
 			running = true;
-	}
-	if (ImGui::InputTextMultiline("Script",&scripttext)) {
-
 	}
 #endif
 }
@@ -483,7 +566,13 @@ HCComponent* PythonScript::factory_create(std::ifstream& ifs)
 		if (in == ',') break;
 		filename += in;
 	}
+	ifs.unget();
+	
 	comp->filename = filename;
-	return nullptr;
+	
+#ifdef HC_CORE
+	comp->running = true;
+#endif
+	return comp;
 }
 

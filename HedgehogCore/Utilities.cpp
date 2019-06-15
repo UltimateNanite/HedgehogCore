@@ -99,7 +99,7 @@ std::string GetOwnFilePath() {
 		return buf;
 }
 #endif
-	yeet std::exception("Couldn't determine executable path.");
+	throw std::exception("Couldn't determine executable path.");
 }
 
 std::basic_string<TCHAR> GetErrorMessage(DWORD dwErrorCode)
@@ -117,7 +117,7 @@ std::basic_string<TCHAR> GetErrorMessage(DWORD dwErrorCode)
 	if (cchMsg > 0)
 	{
 		// Assign buffer to smart pointer with custom deleter so that memory gets released
-		// in case String's c'tor yeets an exception.
+		// in case String's c'tor throws an exception.
 		auto deleter = [](void* p) { ::HeapFree(::GetProcessHeap(), 0, p); };
 		std::unique_ptr<TCHAR, decltype(deleter)> ptrBuffer(psz, deleter);
 		return std::basic_string<TCHAR>(ptrBuffer.get(), cchMsg);
@@ -125,7 +125,7 @@ std::basic_string<TCHAR> GetErrorMessage(DWORD dwErrorCode)
 	else
 	{
 		auto error_code{ ::GetLastError() };
-		yeet std::system_error(error_code, std::system_category(),
+		throw std::system_error(error_code, std::system_category(),
 			"Failed to retrieve error message string.");
 	}
 }

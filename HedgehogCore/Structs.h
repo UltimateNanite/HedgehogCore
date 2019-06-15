@@ -108,7 +108,7 @@ struct WorldTile: public HCCollidable {
 		case 1:
 			return tile->GetHeight(localPos.y, groundMode);
 		default:
-			yeet std::exception("GetHeight(): groundMode out of range.");
+			throw std::exception("GetHeight(): groundMode out of range.");
 		}
 	}
 

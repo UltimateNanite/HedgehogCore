@@ -2,6 +2,15 @@
 #include "Includes.h"
 #include <SFML/OpenGL.hpp>
 #include "Structs.h"
+
+#ifdef _DEBUG
+#undef _DEBUG
+#include <Python.h>
+#define _DEBUG
+#else
+#include <Python.h>
+#endif
+
 class Room;
 struct Player;
 class HCObject;
@@ -24,12 +33,12 @@ public:
 	virtual void			draw(sf::RenderTarget& target, sf::RenderStates states) const	= 0;
 	virtual HCComponent*	clone()													const	= 0;
 
-	static HCComponent* create(Room* room, HCObject* parent) { return nullptr; }
+	static HCComponent*		create(Room* room, HCObject* parent) { return nullptr; }
 
 	//operator overloads for saving/loading
-	friend std::ifstream& operator>>(std::ifstream& ifs, Room& rt);
-	friend std::ofstream& operator<<(std::ofstream& ofs, const HCComponent& comp);
-	friend std::ifstream& operator>>(std::ifstream& ifs, HCComponent& comp);
+	friend std::ifstream&	operator>>(std::ifstream& ifs, Room& rt);
+	friend std::ofstream&	operator<<(std::ofstream& ofs, const HCComponent& comp);
+	friend std::ifstream&	operator>>(std::ifstream& ifs, HCComponent& comp);
 	friend class HCCompFactory;
 };
 
@@ -216,9 +225,24 @@ public:
 
 class PythonScript : public HCComponent {
 private:
-	std::string scripttext;
-	std::string filename;
+
+	std::string filename = "pest";
 	bool running;
+	PyObject* pName, * pModule;
+
+	bool valid;
+	void LoadScript();
+
+	enum PyType {
+		Long,
+		Float,
+		Int,
+		String,
+		Null,
+		Complex,
+		Bool
+	};
+	void CallFunction(std::string name, std::vector<std::pair<PyType, std::string>> args = {});
 public:
 	PythonScript* clone() const override { return new PythonScript(*this); }
 	using HCComponent::HCComponent;
@@ -233,6 +257,8 @@ public:
 
 
 	static HCComponent* factory_create(std::ifstream& ifs);
+
+	friend PyObject* set_position(PyObject* m, PyObject* args);
 };
 
 //Derived preset
@@ -257,3 +283,4 @@ public:
 };
 
 */
+
