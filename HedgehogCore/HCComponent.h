@@ -116,7 +116,7 @@ private:
 	sf::Texture txt;
 	std::string texturename;
 	bool txt_valid = false;
-	static class WrapMode {
+	class WrapMode {
 	public:
 		static const int Stretch = 0;
 		static const int Crop = 1;

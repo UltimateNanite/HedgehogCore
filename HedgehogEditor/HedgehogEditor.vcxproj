@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|Win32">
@@ -90,14 +90,14 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>WIN32;HC_EDITOR;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>$(LOCALAPPDATA)\Programs\Python\Python36-32\include;$(SolutionDir)HedgehogCore\;C:\Program Files\Boost\boost_1_70_0;$(SolutionDir)HedgehogCore\Includes\SFML-2.5.1\include;imgui\;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(LOCALAPPDATA)\Programs\Python\Python37-32\include;$(SolutionDir)HedgehogCore\;C:\Program Files\Boost\boost_1_70_0;$(SolutionDir)HedgehogCore\Includes\SFML-2.5.1\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp17</LanguageStandard>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalLibraryDirectories>$(SolutionDir)HedgehogCore\Includes\SFML-2.5.1\lib;$(LOCALAPPDATA)\Programs\Python\Python36-32\libs</AdditionalLibraryDirectories>
-      <AdditionalDependencies>python36.lib;opengl32.lib;sfml-main-d.lib;sfml-system-d.lib;sfml-network-d.lib;sfml-audio-d.lib;sfml-graphics-d.lib;sfml-window-d.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(SolutionDir)HedgehogCore\Includes\SFML-2.5.1\lib;$(LOCALAPPDATA)\Programs\Python\Python37-32\libs</AdditionalLibraryDirectories>
+      <AdditionalDependencies>python37.lib;opengl32.lib;sfml-main-d.lib;sfml-system-d.lib;sfml-network-d.lib;sfml-audio-d.lib;sfml-graphics-d.lib;sfml-window-d.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
@@ -125,7 +125,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>WIN32;HC_EDITOR;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>$(LOCALAPPDATA)\Programs\Python\Python36-32\include;$(SolutionDir)HedgehogCore\;C:\Program Files\Boost\boost_1_70_0;$(SolutionDir)HedgehogCore\Includes\SFML-2.5.1\include;imgui\;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(LOCALAPPDATA)\Programs\Python\Python37-32\include;$(SolutionDir)HedgehogCore\;C:\Program Files\Boost\boost_1_70_0;$(SolutionDir)HedgehogCore\Includes\SFML-2.5.1\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp17</LanguageStandard>
     </ClCompile>
     <Link>
@@ -133,8 +133,8 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalLibraryDirectories>$(SolutionDir)HedgehogCore\Includes\SFML-2.5.1\lib;$(LOCALAPPDATA)\Programs\Python\Python36-32\libs</AdditionalLibraryDirectories>
-      <AdditionalDependencies>python36.lib;opengl32.lib;sfml-main.lib;sfml-system.lib;sfml-network.lib;sfml-audio.lib;sfml-graphics.lib;sfml-window.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(SolutionDir)HedgehogCore\Includes\SFML-2.5.1\lib;$(LOCALAPPDATA)\Programs\Python\Python37-32\libs</AdditionalLibraryDirectories>
+      <AdditionalDependencies>python37.lib;opengl32.lib;sfml-main.lib;sfml-system.lib;sfml-network.lib;sfml-audio.lib;sfml-graphics.lib;sfml-window.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -168,11 +168,11 @@
     <ClCompile Include="..\HedgehogCore\Utilities.cpp" />
     <ClCompile Include="AssetSelector.cpp" />
     <ClCompile Include="HCAsset.cpp" />
+    <ClCompile Include="HCComponent_Editor.cpp" />
     <ClCompile Include="HedgehogEditor.cpp" />
     <ClCompile Include="imgui-extra.cpp" />
     <ClCompile Include="imgui-SFML.cpp" />
     <ClCompile Include="imgui.cpp" />
-    <ClCompile Include="imgui\imgui_stl.cpp" />
     <ClCompile Include="imgui_demo.cpp" />
     <ClCompile Include="imgui_draw.cpp" />
     <ClCompile Include="imgui_widgets.cpp" />

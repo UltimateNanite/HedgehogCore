@@ -69,7 +69,7 @@
     <ClCompile Include="..\HedgehogCore\Structs.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="imgui\imgui_stl.cpp">
+    <ClCompile Include="HCComponent_Editor.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

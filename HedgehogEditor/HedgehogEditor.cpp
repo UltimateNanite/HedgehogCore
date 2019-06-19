@@ -16,7 +16,7 @@
 #include "imgui-extra.h"
 #include "TinyFileDialog.h"
 #include "HCCompFactory.h"
-
+#include <functional>
 
 #ifdef _DEBUG
 #undef _DEBUG
